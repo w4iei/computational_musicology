@@ -2,29 +2,48 @@
 title: "Computational Musicology"
 author: "Noah Jaffe"
 date: "2/20/2022"
-output: html_document
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# A look at Bach
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+As a curiosity, I created a playlist containing only tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's Well Tempered Clavier, Book 1.     
+<https://open.spotify.com/playlist/4yNYY3xmNhPTDrfFc0qG9b?si=5a035a14f9924ae3>
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## About the corpus. 
+This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
+The exceptions include:  
+* The harp recording-labeled "Harp", in which the artist repeated the entire piece, but up an octave.  
+* The recording by Sir Andras Schiff which includes the fugue performed after the prelude  
+* The Jazz Arrangement by Jacques Loussier, which is labeled "Jazz Arrangement"  
 
-```{r cars}
-summary(cars)
+This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
+
+Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
+
+![Duration Histogram](Unmodified Histograms.png)
+Given that most of the musicians are playing the exact same piece of music, we expect a few things. First, I would think that track duration would vary inversely and linearly with tempo. If you have a fixed number of notes, and they are played through more quickly, then the track duration should be shorter. But our distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess. To confirm my suspsions, I created a scatterplot of tempo 
+![Tempo vs Duration Scatterplot](Unmodified Tempo vs Duration.png)  
+A quick survey of the corpus shows that the harp recording is clearly the fastest performance. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, so I divide by two to "unwrap" the tempo:
+```
+  tempo_threshold = 95;
+  time_threshold = 1.5;
+  bach_prelude_playlist_features = bach_playlist_features %>% 
+    mutate(tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
 ```
 
-## Including Plots
+Re-evaluation shows us a much more convincing distribution for tempo! 
+![Duration Histogram](Wrapped Histograms.png)
+![Tempo vs Duration Scatterplot](Wrapped Tempo vs Duration.png)  
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Surprising Outlier: Axel Gillison
+Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! A listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
+![Key vs Tempo Scatterplot](Key vs Tempo.png)  
+It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16-[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
