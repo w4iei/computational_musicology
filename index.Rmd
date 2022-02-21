@@ -29,9 +29,9 @@ This turned out to be a wonderful introduction to data science, R, the tidyverse
 Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
 
 ![Duration Histogram](Unmodified Histograms.png)
-Given that most of the musicians are playing the exact same piece of music, we expect a few things. First, I would think that track duration would vary inversely and linearly with tempo. If you have a fixed number of notes, and they are played through more quickly, then the track duration should be shorter. But our distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess. To confirm my suspsions, I created a scatterplot of tempo 
+Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But our distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess. To confirm my suspsions, I created a scatterplot of tempo vs durations. The two modes are observable: with the first one near the harpsichord label and the second directly below it: near the tempo of 80, duration of 2 minutes mark.
 ![Tempo vs Duration Scatterplot](Unmodified Tempo vs Duration.png)  
-A quick survey of the corpus shows that the harp recording is clearly the fastest performance. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, so I divide by two to "unwrap" the tempo:
+A quick survey of the corpus shows that the harp and one other recording (less than 90 seconds duration) are clearly the fastest performances. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, if its duration is longer than 90 seconds. So I divide by two to "unwrap" the tempo:
 ```
   tempo_threshold = 95;
   time_threshold = 1.5;
