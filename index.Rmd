@@ -1,49 +1,138 @@
 ---
 title: "Computational Musicology"
 author: "Noah Jaffe"
-date: "2/20/2022"
-output:
-  html_document: default
-  word_document: default
-  pdf_document: default
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(remotes)
+library(spotifyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(plotly)
+spotifyr::get_spotify_access_token()
+
+
+bach_prelude_playlist = "4yNYY3xmNhPTDrfFc0qG9b"
+
+bach_prelude_playlist_features = get_playlist_audio_features("", bach_prelude_playlist)
+bach_prelude_playlist_features = bach_prelude_playlist_features %>% mutate(track.duration_min = track.duration_ms/1000/60)
+wrapped_tempo_label = "Unmodified"
+
+special_bach_track_notes_key = c('', '', '', '', '', 
+                                 'Harp', '', '', 'Axel Gillison', 'Harpsichord',
+                                 '', '', '', '', '',
+                                 '', '', '', 'Schiff w/ Fugue', 'Jazz Arrangement',
+                              '', '', '', '', '', '', '', '', '',
+                             '', '')
+
+# Best first plot, as a sanity check
+# Duration Histogram
+hist1 = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, 
+)) + geom_histogram(bins=12) + xlab("Track Duration (min)") + scale_y_continuous(breaks=c(2,4,6,8))
+# Best first plot, as a sanity check
+# Tempo Histogram
+hist2 = ggplot(bach_prelude_playlist_features, aes(
+  x=tempo, 
+)) + geom_histogram(bins=20) + xlab("Tempo (bpm)") + scale_y_continuous(breaks=c(2,4,6,8,10,12,14))  + xlim(50, 160)
+
+# Tempo vs Duration
+tempo_v_duration = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, y=tempo,
+)) + geom_point() + xlab("Track Duration (min)") + ylab("Tempo (bpm)") +
+  geom_text(
+    label=special_bach_track_notes_key,
+    nudge_x=.15, nudge_y=1.7
+  ) + ggtitle("Original Tempo vs Duration") +
+    xlim(1, 6.5) + ylim(50, 150)
+
+
+fix_tempo_wrap = function(bach_playlist_features) {
+  tempo_threshold = 95;
+  time_threshold = 1.5;
+  bach_prelude_playlist_features = bach_playlist_features %>% 
+    mutate(tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
+}
+
+bach_prelude_playlist_features = fix_tempo_wrap(bach_prelude_playlist_features)
+# Best first plot, as a sanity check
+# Duration Histogram
+hist3 = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, 
+)) + geom_histogram(bins=12) + xlab("Track Duration (min)") + scale_y_continuous(breaks=c(2,4,6,8))
+
+# Best first plot, as a sanity check
+# Tempo Histogram
+hist4 = ggplot(bach_prelude_playlist_features, aes(
+  x=tempo, 
+)) + geom_histogram(bins=15) + xlab("Tempo (bpm)") + scale_y_continuous(breaks=c(2,4,6,8, 10, 12, 14)) +   xlim(50, 160)
+
+tempo_v_duration2 = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, y=tempo,
+)) + geom_point() + xlab("Track Duration (min)") + ylab("Tempo (bpm)") +
+  geom_text(
+    label=special_bach_track_notes_key,
+    nudge_x=.15, nudge_y=1.7
+  ) + ggtitle("Wrapped Tempo vs Duration") +
+    xlim(1, 6.5) + ylim(50, 150)
 ```
 
-# A look at Bach
-
-As a curiosity, I created a playlist containing only tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's Well Tempered Clavier, Book 1.     
+  
+Column {.sidebar data-width=350}
+-------------------------------------
+### A look at Bach  
+#### About the corpus  
+As a curiosity, I created a playlist containing only tracks of the same piece of music:  
+The C-major prelude (BWV 846) from Bach's Well Tempered Clavier, Book 1.     
 <https://open.spotify.com/playlist/4yNYY3xmNhPTDrfFc0qG9b?si=5a035a14f9924ae3>
 
-## About the corpus. 
 This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
 The exceptions include:  
-* The harp recording-labeled "Harp", in which the artist repeated the entire piece, but up an octave.  
-* The recording by Sir Andras Schiff which includes the fugue performed after the prelude  
-* The Jazz Arrangement by Jacques Loussier, which is labeled "Jazz Arrangement"  
+1. The harp recording-labeled "Harp", in which the artist repeated the entire piece, but up an octave.  
+2. The recording by Sir Andras Schiff which includes the fugue performed after the prelude  
+3. The Jazz Arrangement by Jacques Loussier, which is labeled "Jazz Arrangement"  
 
 This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
 
 Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
 
-![Duration Histogram](Unmodified Histograms.png)
+#### Notes about Tempo
 Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But our distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess. To confirm my suspsions, I created a scatterplot of tempo vs durations. The two modes are observable: with the first one near the harpsichord label and the second directly below it: near the tempo of 80, duration of 2 minutes mark.
-![Tempo vs Duration Scatterplot](Unmodified Tempo vs Duration.png)  
+
 A quick survey of the corpus shows that the harp and one other recording (less than 90 seconds duration) are clearly the fastest performances. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, if its duration is longer than 90 seconds. So I divide by two to "unwrap" the tempo:
-```
-  tempo_threshold = 95;
-  time_threshold = 1.5;
-  bach_prelude_playlist_features = bach_playlist_features %>% 
-    mutate(tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
-```
+
 
 Re-evaluation shows us a much more convincing distribution for tempo! 
-![Duration Histogram](Wrapped Histograms.png)
-![Tempo vs Duration Scatterplot](Wrapped Tempo vs Duration.png)  
 
-## Surprising Outlier: Axel Gillison
+Row {.tabset .tabset-fade data-height=750}
+-------------------------------------
+### Original Tempo
+
+``` {r echo=FALSE, fig.height = 3, fig.align = 'center'}
+grid = grid.arrange(hist1, hist2, ncol = 2, top=textGrob("Original Tempo Histograms"))
+```
+``` {r echo=FALSE}
+ggplotly(tempo_v_duration, height = 350)
+```
+
+### Unwrapped Tempo
+``` {r echo=FALSE, fig.height = 3, fig.align = 'center'}
+grid2 = grid.arrange(hist3, hist4, ncol = 2, top=textGrob("Unwrapped Tempo Histograms"))
+```
+``` {r echo=FALSE}
+ggplotly(tempo_v_duration2, height = 350)
+```
+
+### Outlier: Axel Gillison
 Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! A listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
-![Key vs Tempo Scatterplot](Key vs Tempo.png)  
+
 It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16-[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
+
+
