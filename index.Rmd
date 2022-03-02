@@ -6,14 +6,15 @@ output:
     storyboard: true
     theme: sandstone
     self_contained: false
+    
 ---
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(remotes)
 library(spotifyr)
 library(ggplot2)
+library(GGally)
 library(grid)
 library(gridExtra)
 library(plotly)
@@ -32,6 +33,14 @@ special_bach_track_notes_key = c('', '', '', '', '',
                                  '', '', '', 'Schiff w/ Fugue', 'Jazz Arrangement',
                               '', '', '', '', '', '', '', '', '',
                              '', '')
+
+fix_tempo_wrap = function(bach_playlist_features) {
+  tempo_threshold = 95;
+  time_threshold = 1.5;
+  bach_prelude_playlist_features = bach_playlist_features %>% 
+    mutate(corrected_tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
+}
+bach_prelude_playlist_features = fix_tempo_wrap(bach_prelude_playlist_features)
 
 # Best first plot, as a sanity check
 # Duration Histogram
@@ -54,15 +63,6 @@ tempo_v_duration = ggplot(bach_prelude_playlist_features, aes(
   ) + ggtitle("Original Tempo vs Duration") +
     xlim(1, 6.5) + ylim(50, 150)
 
-
-fix_tempo_wrap = function(bach_playlist_features) {
-  tempo_threshold = 95;
-  time_threshold = 1.5;
-  bach_prelude_playlist_features = bach_playlist_features %>% 
-    mutate(tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
-}
-
-bach_prelude_playlist_features = fix_tempo_wrap(bach_prelude_playlist_features)
 # Best first plot, as a sanity check
 # Duration Histogram
 hist3 = ggplot(bach_prelude_playlist_features, aes(
@@ -85,7 +85,7 @@ tempo_v_duration2 = ggplot(bach_prelude_playlist_features, aes(
     xlim(1, 6.5) + ylim(50, 150)
 ```
 
-### **The corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
+### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
 The playlist contains tracks of the same piece of music:The C-major prelude (BWV 846) from Bach's Well Tempered Clavier, Book 1.     
 
@@ -97,7 +97,7 @@ This playlist contains 28 tracks. 26 of the tracks are of musicians playing exac
 
 The **exceptions** include:  
 1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
-2. The [recording by Sir Andras Schiff] (https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
+2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
 3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
 
 This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
@@ -106,23 +106,6 @@ Downloading raw track feature extractions from Spotify yielded the following his
 
 
 ###  **A tale of two harpsichords** <br>  A look at Spotify's feature judgements of *acousticness* and *instrumentalness* for harpischord and piano
-
-
-This playlist contains 29 tracks. Two of these recordings are using harpsichord. 
-The two harpsichord tracks are by [Trevor Pinnock](https://open.spotify.com/track/3pbZ0GbDAl8ehNiW58wOLO?si=a10bdc71980b402b) and [Luc Beauséjour](https://open.spotify.com/track/13zyfbzt2PiYo2RjjJMCsb?si=882dc21b84d049be).
-
-To my ears, these performances are quite similar. The tunings are slightly different, as are the performance styles. But in general, they are quite similar. The microphone and audio mixing techniques of the Pinnock recording seem more luxurious to my ears, but I cannot think of any other dissimilarities.
-
-A track on the album [Sounds for Massages](https://open.spotify.com/track/1TJSjNBt6oIHV8QdgdgrBT?si=1b43d60d1f024c00) which contains the piece performed on piano, with a synthesized vocal track of "aah" placed on top. 
-
-#### Spotify API definition of acousticness and instrumentalness
-The [Spotify API definition](https://developer.spotify.com/documentation/web-api/reference/#/operations/get-audio-features) of acousticness:
-
-#### Acousticness
-A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
-
-#### Instrumentalness
-Predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.
 
 ```{r download_features, include=FALSE}
 bach_prelude_playlist_features = get_playlist_audio_features("", "4yNYY3xmNhPTDrfFc0qG9b")
@@ -137,46 +120,104 @@ bach_harpsichord_labels = c('', '', '', '', '',
 bach_harpsichord_factor = c('Piano', 'Piano', 'Piano', 'Piano', 'Piano', 
                          'Piano', 'Piano', 'Piano', 'Piano', 'Harpsichord',
                          'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
+                          'Piano', 'Piano + Jazz Band', 'Piano', 'Piano', 'Piano',
                           'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
-                          'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
-                         'Harpsichord', 'Piano + Vocals', '')
+                         'Harpsichord', 'Piano + Vocals', 'Piano')
 bach_prelude_playlist_features = bach_prelude_playlist_features %>%
   mutate(Label = bach_harpsichord_labels)
 bach_prelude_playlist_features = bach_prelude_playlist_features %>%
-  mutate(WeirdInstrument = factor(bach_harpsichord_factor))
+  mutate(instrument = factor(bach_harpsichord_factor))
 ```
 
-#### Plot the acousticness
-```{r acousticness}
-color_values = c("Piano"="black", "Harpsichord"="#D55E00", "Piano + Vocals"="brown")
+```{r acousticness, echo=FALSE}
+color_values = c("Piano"="black", "Harpsichord"="#D55E00",
+                 "Piano + Vocals"="brown", "Piano + Jazz Band"="pink")
 acoustic_v_duration = ggplot(bach_prelude_playlist_features, aes(
-  x=track.duration_min, y=acousticness, color=WeirdInstrument
+  x=track.duration_min, y=acousticness, color=instrument
 )) + geom_point() + xlab("Track Duration (min)") + ylab("Acousticness") +
   geom_text(
     label=bach_harpsichord_labels, nudge_x=0, nudge_y=-0.02
   ) + ggtitle("Acousticness vs Track Duration") + ylim(0, 1) + scale_color_manual(values=color_values)
-acoustic_v_duration
+#ggplotly(acoustic_v_duration) Disable Legacy Plot
 ```
 
-#### Plot the instrumentalness
-```{r instrumentalness}
+```{r instrumentalness, echo=FALSE}
 instrumental_v_duration = ggplot(bach_prelude_playlist_features, aes(
-  x=track.duration_min, y=instrumentalness,
+  x=track.duration_min, y=instrumentalness, color=instrument
 )) + geom_point() + xlab("Track Duration (min)") + ylab("Instrumentalness") +
   geom_text(
     label=bach_harpsichord_labels, nudge_x=0, nudge_y=-0.02
-  ) + ggtitle("Instrumentalness vs Track Duration") + ylim(0, 1)
-instrumental_v_duration
+  ) + ggtitle("Instrumentalness vs Track Duration") + ylim(0, 1) + 
+  scale_color_manual(values=color_values)
+#ggplotly(instrumental_v_duration) Disable Legacy Plot
+```
+
+```{r parallel_coords, echo=FALSE}
+para_coord_data = bach_prelude_playlist_features %>% 
+  select(instrument, instrumentalness, acousticness, Label)
+para_coord_plot = ggparcoord(para_coord_data, 
+  columns=2:3, groupColumn=1, scale="globalminmax",
+    showPoints = TRUE,
+  title = "Spotify Instrumentalness and Acousticness"
+)  + xlab("")
+ggplotly(para_coord_plot)
 ```
 
 ***
 
-#### Questions about acousticness and instrumentalness
+Two of the tracks are recordings of a harpsichord; they are by [Trevor Pinnock](https://open.spotify.com/track/3pbZ0GbDAl8ehNiW58wOLO?si=a10bdc71980b402b) and [Luc Beauséjour](https://open.spotify.com/track/13zyfbzt2PiYo2RjjJMCsb?si=882dc21b84d049be).
 
-#### Instrumentalness and the tale of two harpsichords
-Why does the SpotifyAPI think that Trevor Pinnock's recording sounds like it has vocals?! A score of 0.1 means that the API is quite certain that the there is vocal content. It's clear that Harpsichords have a rich harmonic content. Is it because of fancy microphone techniques that the low strings of his harpsichord resonate in a way different than that of Beauséjour's? Moreover, one would think that deliberately inserting an "aah" sound on top of the recording would tank the score, if that is what the algorithm is looking for! But it's clear that the massage recording is within the distribution of piano-only recordings.
+To my ears, these performances are quite similar. The tunings are slightly different, as are the performance styles. But in general, they are quite similar. The microphone and audio mixing techniques of the Pinnock recording seem more luxurious to my ears, but I cannot think of any other dissimilarities.
 
-#### Harpsichord as the original electric instrument
+A track on the album [Sounds for Massages](https://open.spotify.com/track/1TJSjNBt6oIHV8QdgdgrBT?si=1b43d60d1f024c00) which contains the piece performed on piano, with a synthesized vocal track of "aah" placed on top. 
+
+The [Spotify API definition](https://developer.spotify.com/documentation/web-api/reference/#/operations/get-audio-features) of *acousticness*:
+A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
+
+*Instrumentalness* predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.
+
+<br>
+**Questions**  
+Why does the SpotifyAPI think that Trevor Pinnock's recording has vocals?! A score of 0.1 means that the API is quite certain that the there is vocal content. It's clear that Harpsichords have a rich harmonic content. Is it because of fancy microphone techniques that the low strings of his harpsichord resonate in a way different than that of Beauséjour's? Moreover, one would think that deliberately inserting an "aah" sound on top of the recording would tank the score, if that is what the algorithm is looking for! But it's clear that the massage recording is within the distribution of piano-only recordings.
+
 The acousticness metric is quite more vague in the Spotify API, but it seems to be more related to spectral content. Distortion of an electric guitar is caused my compression. This distrotion is what gives gives electric guitar its signature bright sound. It makes sense that harpsichord sounds more similar to electric guitar than the felt tips of a piano. 
+
+
+### **Tempo Analysis**
+
+```{r tempo, echo=FALSE}
+
+# Best first plot, as a sanity check
+# Tempo Histogram
+hist4 =  ggplot(bach_prelude_playlist_features, aes(
+  x=corrected_tempo, 
+)) + geom_histogram(bins=15) + xlab("Tempo (bpm)") + scale_y_continuous(breaks=c(2,4,6,8, 10, 12, 14)) +   xlim(50, 160)
+
+
+hist4
+```
+
+***
+
+This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
+The exceptions include:  
+1. The harp recording-labeled "Harp", in which the artist repeated the entire piece, but up an octave.  
+2. The recording by Sir Andras Schiff which includes the fugue performed after the prelude  
+3. The Jazz Arrangement by Jacques Loussier, which is labeled "Jazz Arrangement"  
+
+This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
+
+Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
+
+
+Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But our distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess. To confirm my suspsions, I created a scatterplot of tempo vs durations. The two modes are observable: with the first one near the harpsichord label and the second directly below it: near the tempo of 80, duration of 2 minutes mark.
+
+A quick survey of the corpus shows that the harp and one other recording (less than 90 seconds duration) are clearly the fastest performances. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, if its duration is longer than 90 seconds. So I divide by two to "unwrap" the tempo:
+
+Re-evaluation shows a much more convincing distribution for tempo! 
+
+Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! Listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
+
+It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
 
 
