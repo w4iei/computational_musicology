@@ -38,11 +38,53 @@ special_bach_track_notes_key = c('', '', '', '', '',
                               '', '', '', '', '', '', '', '', '',
                              '', '')
 
+
 # Best first plot, as a sanity check
 # Duration Histogram
 hist1 = ggplot(bach_prelude_playlist_features, aes(
   x=track.duration_min, 
 )) + geom_histogram(bins=12) + xlab("Track Duration (min)") + scale_y_continuous(breaks=c(2,4,6,8))
+
+
+loud_v_acoustic = ggplot(bach_prelude_playlist_features, aes(
+  x=loudness, y=acousticness,
+)) + geom_point() + xlab("Loudness") + ylab("Acousticness") +
+  geom_text(
+    label=special_bach_track_notes_key
+  ) + ggtitle(paste(wrapped_tempo_label, " Loudness vs Acousticness", sep=''))
+loud_v_acoustic
+
+
+bach_harpsichord_key = c('', '', '', '', '', 
+                         '', '', '', '', 'Harpsichord',
+                         '', '', '', '', '',
+                         '', '', '', '', '',
+                         '', '', '', '', '', '', '', '', 'Harpsichord',
+                         '', '')
+acoustic_v_duration = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, y=acousticness,
+)) + geom_point() + xlab("Duration (min)") + ylab("Acousticness") +
+  geom_text(
+    label=bach_harpsichord_key, nudge_x=0, nudge_y=0.02
+  ) + ggtitle("Acousticness vs Duration")
+acoustic_v_duration
+
+
+instrumental_v_acoustic = ggplot(bach_prelude_playlist_features, aes(
+  x=acousticness, y=instrumentalness,
+)) + geom_point() + xlab("Acousticness") + ylab("Instrumentalness") +
+  geom_text(
+    label=special_bach_track_notes_key
+  ) + ggtitle(paste(wrapped_tempo_label, " Insturmental vs Acousticness", sep=''))
+instrumental_v_acoustic
+
+dance_v_tempo = ggplot(bach_prelude_playlist_features, aes(
+  x=tempo, y=danceability,
+)) + geom_point() + xlab("Tempo (bpm)") + ylab("Danceability") +
+  geom_text(
+    label=special_bach_track_notes_key
+  ) + ggtitle(paste(wrapped_tempo_label, " Danceability vs Tempo", sep=''))
+dance_v_tempo
 
 # Best first plot, as a sanity check
 # Tempo Histogram
@@ -60,6 +102,21 @@ ggsave(
   bg = NULL,
 )
 
+# Tempo vs Duration
+Energy_v_duration = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, y=energy,
+)) + geom_point() + xlab("Track Duration (min)") + ylab("Energy") +
+  geom_text(
+    label=special_bach_track_notes_key)
+Energy_v_duration
+
+# Valence vs Duration
+valence_v_duration = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, y=valence,
+)) + geom_point() + xlab("Track Duration (min)") + ylab("valence") +
+  geom_text(
+    label=special_bach_track_notes_key)
+valence_v_duration
 
 # Tempo vs Duration
 tempo_v_duration = ggplot(bach_prelude_playlist_features, aes(
