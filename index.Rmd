@@ -74,6 +74,77 @@ This turned out to be a wonderful introduction to data science, R, the tidyverse
 
 Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
 
+
+###  **Harmonic Novelty**: Pitch and Timbre Self-Similarity <br>
+``` {r self_similarity, echo=FALSE}
+gould =   
+  get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>% 
+  compmus_align(sections, segments) %>%                     # Change `bars`
+  select(sections) %>%                                      #   in all three
+  unnest(sections) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+          compmus_summarise, pitches,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+          compmus_summarise, timbre,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  )
+
+gould_pitch_ssm = gould %>%
+  compmus_self_similarity(pitches, "cosine") %>% 
+  ggplot(
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_classic() +
+  labs(x = "", y = "", title="Pitch")
+
+gould_timbre_ssm = gould %>%
+  compmus_self_similarity(timbre, "cosine") %>% 
+  ggplot(
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_classic() +
+  labs(x = "", y = "", title="Timbre")
+
+grid.arrange(gould_pitch_ssm, gould_timbre_ssm, ncol = 2,
+              top=textGrob('Glenn Gould Self Similarity Matricies'))
+
+```
+
+***
+
+Here, a bright line runs approximately halfway through the piece. This indicates that the pitch content of this spot is quite different from that of the rest of the piece. 
+
+And indeed, Spotify thinks that this moment is the most interesting and defining part of the piece. It's what is played when the track is selected in a preview.
+
+Meanwhile, the timbre self-similarity matrix seems to be most sensitive to notes below A3. This highlights a large difference when the bass line descends and becomes well pronounced pronounced.
+
+
 ###  **A tale of two harpsichords**: Tuning and Chromagrams <br>
 ``` {r chroma, echo=FALSE}
 gould = 
