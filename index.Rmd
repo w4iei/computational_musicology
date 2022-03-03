@@ -55,27 +55,8 @@ bach_prelude_playlist_features = bach_prelude_playlist_features %>%
 
 ```
 
-### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
-This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1.     
-
-<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/4yNYY3xmNhPTDrfFc0qG9b?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
-
-***
-
-This playlist contains 28 tracks. 25 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
-
-The **exceptions** include:  
-1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
-2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
-3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
-
-This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
-
-Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
-
-
-###  **Harmonic Novelty**: Pitch and Timbre Self-Similarity <br>
+###  **Harmonic novelty**: Pitch and Timbre Self-Similarity <br>
 ``` {r self_similarity, echo=FALSE}
 gould =   
   get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>% 
@@ -131,7 +112,63 @@ gould_timbre_ssm = gould %>%
   theme_classic() +
   labs(x = "", y = "", title="Timbre")
 
-grid.arrange(gould_pitch_ssm, gould_timbre_ssm, ncol = 2,
+gould =   
+  get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>% 
+  compmus_align(bars, segments) %>%                     # Change `bars`
+  select(bars) %>%                                      #   in all three
+  unnest(bars) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+          compmus_summarise, pitches,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+          compmus_summarise, timbre,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  )
+
+gould_pitch_ssm_fine = gould %>%
+  compmus_self_similarity(pitches, "cosine") %>% 
+  ggplot(
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_classic() +
+  labs(x = "", y = "", title="Pitch")
+
+gould_timbre_ssm_fine = gould %>%
+  compmus_self_similarity(timbre, "cosine") %>% 
+  ggplot(
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_classic() +
+  labs(x = "", y = "", title="Timbre")
+
+grid.arrange(gould_pitch_ssm, gould_timbre_ssm,
+             gould_pitch_ssm_fine, gould_timbre_ssm_fine,
+             ncol = 2, nrow = 2,
               top=textGrob('Glenn Gould Self Similarity Matricies'))
 
 ```
@@ -144,8 +181,56 @@ And indeed, Spotify thinks that this moment is the most interesting and defining
 
 Meanwhile, the timbre self-similarity matrix seems to be most sensitive to notes below A3. This highlights a large difference when the bass line descends and becomes well pronounced pronounced.
 
+A look at the pitch self-similarity matricies don't reveal much information about musical form, other than there being a harmonically distant section in the middle. 
 
-###  **A tale of two harpsichords**: Tuning and Chromagrams <br>
+
+###  **Timbre and musical form**: <br>Cepstrogram: A surprising outlier
+
+``` {r jazz_timbre, echo=FALSE}
+jazzy = 
+  get_tidy_audio_analysis("2RQVtPukyUHJp1TFE1R66J") %>% 
+  compmus_align(sections, segments) %>%                     # Change `bars`
+  select(sections) %>%                                      #   in all three
+  unnest(sections) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+          compmus_summarise, pitches,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+          compmus_summarise, timbre,
+          method = "rms", norm = "chebyshev"              # Change summary & norm.
+      )
+  )
+
+jazzy %>%
+  compmus_gather_timbre() %>%
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = basis,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = "Cepstrogram") +
+  scale_fill_viridis_c() +                              
+  theme_classic()
+
+```
+
+*** 
+
+Here is a cepstrogram showing different timbre-elements of [this recording by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J).
+There is an abrupt timbre change around 120s, from what is mostly just c02, to a much more complicated timbre sound, only to have it return to the original sound at the very end. A listening reveals that a drumset enters at that point! It exits just before the end, allowing the traditional ending.
+
+
+###  **A tale of two harpsichords**: tuning and chromagrams <br>
 ``` {r chroma, echo=FALSE}
 gould = 
   get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>%
@@ -338,7 +423,6 @@ ggplotly(tempo_v_duration, height=700)
 ```
 
 
-
 ***
 
 Comparing raw track feature extractions from Spotify yielded the following histograms for duration and tempo.  
@@ -354,5 +438,22 @@ Now that the tempo for the tracks is more-or-less calculated correctly and looki
 It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
 
 
+### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
+This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1.     
+
+<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/4yNYY3xmNhPTDrfFc0qG9b?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+
+***
+
+This playlist contains 28 tracks. 25 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
+
+The **exceptions** include:  
+1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
+2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
+3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
+
+This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
+
+Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
 
