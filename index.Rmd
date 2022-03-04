@@ -53,10 +53,13 @@ time_threshold = 1.5;
 bach_prelude_playlist_features = bach_prelude_playlist_features %>% 
   mutate(corrected_tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
 
+get_track_artist = function(track_index) {     bach_prelude_playlist_features[['track.album.artists']][[track_index]][['name']][2]
+}
+
 ```
 
 
-###  **Harmonic novelty**: Pitch and Timbre Self-Similarity <br>
+###  **Harmonic novelty**<br>Pitch and Timbre Self-Similarity
 ``` {r self_similarity, echo=FALSE}
 gould =   
   get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>% 
@@ -184,7 +187,7 @@ Meanwhile, the timbre self-similarity matrix seems to be most sensitive to notes
 A look at the pitch self-similarity matricies don't reveal much information about musical form, other than there being a harmonically distant section in the middle. 
 
 
-###  **Timbre and musical form**: <br>Cepstrogram: A surprising outlier
+###  **Timbre and musical form** <br>Cepstrogram: A surprising outlier
 
 ``` {r jazz_timbre, echo=FALSE}
 jazzy = 
@@ -230,7 +233,122 @@ Here is a cepstrogram showing different timbre-elements of [this recording by Ja
 There is an abrupt timbre change around 120s, from what is mostly just c02, to a much more complicated timbre sound, only to have it return to the original sound at the very end. A listening reveals that a drumset enters at that point! It exits just before the end, allowing the traditional ending.
 
 
-###  **A tale of two harpsichords**: tuning and chromagrams <br>
+### **Comparing Performances**<br>Chromagrams across performances
+``` {r chromas, include=FALSE}
+tracks = bach_prelude_playlist_features[['track.id']]
+
+make_chromagram = function(track_id, title) {
+    track_analysis <-
+    get_tidy_audio_analysis(track_id) %>%
+    select(segments) %>%
+    unnest(segments) %>%
+    select(start, duration, pitches)
+  
+  computed_chroma = track_analysis %>%
+    mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
+    compmus_gather_chroma()
+    
+  ggplot(computed_chroma,
+      aes(
+        x = start + duration / 2,
+        width = duration,
+        y = pitch_class,
+        fill = value
+      )
+    ) +
+    geom_tile() +
+    labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = title) +
+    theme_minimal() + theme(legend.position = "none") +
+    scale_fill_viridis_c()
+}
+
+```
+
+```{r pw, out.width="100%", fig.height=2, echo = F}
+make_chromagram(tracks[1], get_track_artist(1))
+make_chromagram(tracks[2], get_track_artist(2))
+make_chromagram(tracks[3], get_track_artist(3))
+make_chromagram(tracks[4], get_track_artist(4))
+```
+
+***
+
+Here are four chromagrams of the the piece. Visually, they have the same signature despite different tempi and x axes. Visually, we can see Gould's stoccato playing when compared to Gulda. Pre-track silence is visible on Kempf's recording. 
+
+
+### **Comparing Perfomrances**<br>Dynamic Time Warping:<br>Gould vs Gould vs Gulda
+
+```{r echo = F}
+  gould <-
+    get_tidy_audio_analysis(tracks[2]) %>%
+    select(segments) %>%
+    unnest(segments) %>%
+    select(start, duration, pitches)
+
+    gulda <-
+    get_tidy_audio_analysis(tracks[3]) %>%
+    select(segments) %>%
+    unnest(segments) %>%
+    select(start, duration, pitches)
+  
+distance = compmus_long_distance(
+  gould %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  gulda %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  feature = pitches,
+  method = "euclidean"
+) 
+
+distance2 = compmus_long_distance(
+  gould %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  gould %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  feature = pitches,
+  method = "euclidean"
+) 
+  gg1 = ggplot(distance,
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_equal() +
+  labs(x = "Glenn Gould", y = "Friedrich Gulda") +
+  theme_minimal() +
+  scale_fill_viridis_c(guide = NULL)
+
+  gg2 = ggplot(distance2,
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_equal() +
+  labs(x = "Glenn Gould", y = "Glenn Gould") +
+  theme_minimal() +
+  scale_fill_viridis_c(guide = NULL)
+
+  grid.arrange(gg1, gg2, 
+               ncol = 2, nrow = 1, 
+               top=textGrob('Pitch Distance Matricies'))
+  
+```
+
+***
+
+The left plot compares the harmonic content between Glenn Gould and Friedrich Gulda.  
+The right plot is a self-similarity matrix comparing Glenn Gould's performance to his own.
+
+Despite two different tempi for the performance, the two plots are nearly identical. Gulda has a long time after the final note and both performers keep a very steady tempo and do not deviate, as seen by a perfectly straight diagonal line from the origin. 
+
+
+###  **A tale of two harpsichords** tuning and chromagrams <br>
 ``` {r chroma, echo=FALSE}
 gould = 
   get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>%
