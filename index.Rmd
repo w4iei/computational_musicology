@@ -1,5 +1,5 @@
 ---
-title: "Computational Musicology"
+title: "Bach's C-major prelude; computational study"
 author: "Noah Jaffe"
 output: 
   flexdashboard::flex_dashboard:
@@ -32,20 +32,20 @@ tempo_duration_labels = c('', '', '', '', '',
                          '', '', '', '', '',
                           '', 'Jazz Band', '', 'Schiff w/ Fugue', '',
                           '', '', '', '', '',
-                         '', '', '')
+                         '', '', '', '')
 
 bach_harpsichord_labels = c('', '', '', '', '', 
                          '', '', '', '', 'Harpsichord - Pinnock',
                          '', '', '', '', '',
                           '', '', '', '', '',
                           '', '', '', '', '',
-                         'Harpsichord - Beauséjour', 'Massage - Vocals', '')
+                         'Harpsichord - Beauséjour', 'Massage - Vocals', '', '')
 bach_harpsichord_factor = c('Piano', 'Piano', 'Piano', 'Piano', 'Piano', 
                          'Harp', 'Piano', 'Piano', 'Piano', 'Harpsichord',
                          'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
                           'Piano', 'Piano + Jazz Band', 'Piano', 'Piano', 'Piano',
                           'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
-                         'Harpsichord', 'Piano + Vocals', 'Piano')
+                         'Harpsichord', 'Piano + Vocals', 'Piano', 'Piano')
 
 # Unwrap Tempo
 tempo_threshold = 95;
@@ -57,6 +57,65 @@ get_track_artist = function(track_index) {     bach_prelude_playlist_features[['
 }
 
 ```
+
+### **Tempo Overview**<br>Tempi picked by recording artists
+
+```{r tempo, echo=FALSE, fig.show="hold", out.width="50%"}
+
+# Duration Histogram
+hist1 = ggplot(bach_prelude_playlist_features, aes(
+  x=track.duration_min, 
+)) + geom_histogram(bins=12) + xlab("Track Duration (min)") + scale_y_continuous(breaks=c(2,4,6,8)) + ggtitle("Distribution: Track Duration")
+hist1
+
+original_tempi = bach_prelude_playlist_features %>% 
+  transmute(tempo=tempo, label="Original", duration=track.duration_min)
+corrected_tempi = bach_prelude_playlist_features %>% 
+  transmute(tempo=corrected_tempo, label="Corrected", duration=track.duration_min)
+combined_tempi = rbind(original_tempi, corrected_tempi)
+
+hist2 = ggplot(combined_tempi, aes(
+  x=tempo, fill=label
+)) + geom_histogram(bins=12, alpha=0.7) + xlab("Tempo") + 
+  scale_fill_manual(values = c("Original"="black", "Corrected"="#94C54B")) + 
+  theme(legend.title = element_blank()) + 
+  scale_x_continuous(breaks= c(40, 60, 80, 100, 120, 140, 160)) + 
+  scale_y_continuous(breaks=c(2,4,6,8,10,12,14,16))  + 
+  ggtitle("Distribution: Track Tempo")
+
+hist2
+```
+<br>
+
+```{r tempo_time, echo=FALSE}
+
+tempo_v_duration = ggplot(corrected_tempi, aes(
+  x=duration, y=tempo,
+)) + geom_point() + xlab("Track Duration (min)") + ylab("Corrected Tempo (bpm)") +
+  geom_text(
+    label=tempo_duration_labels,
+    nudge_x=.15, nudge_y=1.7
+  ) + ggtitle("Corrected Tempo vs Duration") +
+    xlim(1, 6.5) + ylim(50, 110)
+ggplotly(tempo_v_duration, height=700)
+
+```
+
+***
+
+Comparing raw track feature extractions from Spotify yielded the following histograms for duration and tempo.  
+
+Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But the distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess.
+
+A quick survey of the corpus shows that the harp and one other recording (less than 90 seconds duration) are clearly the fastest performances. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, if its duration is longer than 90 seconds. So I divide by two to "unwrap" the tempo:
+
+Re-evaluation shows a much more convincing distribution for tempo! 
+
+Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! Listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
+
+It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
+
+
 
 ### **Track-level summary**<br>Tempo and Instrument Analysis
 ``` {r track_summary, echo=FALSE}
@@ -111,6 +170,45 @@ This plot shows a multi-dimensional analysis of many track-level features of thi
 
 The jazz band has the largest tempo variation throughout the track.
 
+
+
+### **Tempo Consistency**<br>How steady is a performer?
+``` {r tempograms, out.width="100%", fig.height=2, echo=FALSE}
+fake_bach = get_tidy_audio_analysis("1TJSjNBt6oIHV8QdgdgrBT")
+fake_bach_plot = fake_bach %>% tempogram(window_size = 8, hop_size = 1, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Sounds for Massage") +
+  theme_classic()
+
+gould = get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i")
+gould_plot = gould %>% tempogram(window_size = 8, hop_size = 1, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Glenn Gould") +
+  theme_classic()
+
+jazz_bach = get_tidy_audio_analysis("2RQVtPukyUHJp1TFE1R66J")
+jazz_plot = jazz_bach %>% tempogram(window_size = 8, hop_size = 1, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Jacques Loussier") +
+  theme_classic()
+#grid.arrange(fake_bach_plot, gould_plot, jazz_plot, ncol = 1, nrow = 3)
+fake_bach_plot
+gould_plot
+jazz_plot
+
+```
+
+***
+
+These three "tempograms" show the frequency of novel events events in three recordings from the corpus. These tempogram are clearly showing the sixteenth-note tempo. Since the C-major prelude consists of only sixteenth notes, this makes sense that we see a very clean tempogram for the first two. 
+First, the sounds for massage seems to confirm suspicions that this is computer generated. The tempo is completely consistent across the entire song. Glenn Gould, despite being one of the most consistent Bach performers of all time, has a noticeable tempo dip around 80 seconds.  
+Finally, the Jazz recording by Jacques Loussier is most interesting. In this recording, we see a clear and abrupt tempo shift around the two-minute mark when the jazz gets unleashed. Towards the end when the band returns to the original Bach music, we can see that the tempo is not the original one, even though it feels that way to us as lsiteners. Amusingly, this is a tempo-analogue to sonata form where the original theme returns, but in a different key, here, it returns, in a different tempo. 
 
 ### **Key Areas**<br>Jazz vs Baroque Jazz
 ``` {r keygram, out.width="100%", fig.height=4, echo=FALSE}
@@ -220,7 +318,6 @@ distance_data = jacques %>%
 Here, pitch-distance vectors are masked over sections of music to estimate key areas of pieces. Glenn Gould's recording (bottom) is representative of the original piece of music, while the top is Jacque Loussier's jazz rendition. Bright spots indicate a good match for the indicated key on the left.
 
 The two recordings share the same key signature (pun intended) for the first bit of the piece, where they clearly modulate from C major to d minor, and back. But then the jazz recording gets more exciting. It seems that Jacques Loussier has leaned into this C-D major modulation and uses it again in the Jazz section. Much of the jazz piece is only loosely tied to the C-major key area. 
-
 
 ###  **Harmonic novelty**<br>Pitch and Timbre Self-Similarity
 ``` {r self_similarity, echo=FALSE}
@@ -663,64 +760,6 @@ Why does the SpotifyAPI think that Trevor Pinnock's recording has vocals?! A sco
 
 The acousticness metric is quite more vague in the Spotify API, but it seems to be more related to spectral content. Distortion of an electric guitar is caused my compression. This distrotion is what gives gives electric guitar its signature bright sound. It makes sense that harpsichord sounds more similar to electric guitar than the felt tips of a piano. 
 
-
-### **Tempo Analysis**<br>Tempi picked by recording artists
-
-```{r tempo, echo=FALSE, fig.show="hold", out.width="50%"}
-
-# Duration Histogram
-hist1 = ggplot(bach_prelude_playlist_features, aes(
-  x=track.duration_min, 
-)) + geom_histogram(bins=12) + xlab("Track Duration (min)") + scale_y_continuous(breaks=c(2,4,6,8)) + ggtitle("Distribution: Track Duration")
-hist1
-
-original_tempi = bach_prelude_playlist_features %>% 
-  transmute(tempo=tempo, label="Original", duration=track.duration_min)
-corrected_tempi = bach_prelude_playlist_features %>% 
-  transmute(tempo=corrected_tempo, label="Corrected", duration=track.duration_min)
-combined_tempi = rbind(original_tempi, corrected_tempi)
-
-hist2 = ggplot(combined_tempi, aes(
-  x=tempo, fill=label
-)) + geom_histogram(bins=12, alpha=0.7) + xlab("Tempo") + 
-  scale_fill_manual(values = c("Original"="black", "Corrected"="#94C54B")) + 
-  theme(legend.title = element_blank()) + 
-  scale_x_continuous(breaks= c(40, 60, 80, 100, 120, 140, 160)) + 
-  scale_y_continuous(breaks=c(2,4,6,8,10,12,14,16))  + 
-  ggtitle("Distribution: Track Tempo")
-
-hist2
-```
-<br>
-
-```{r tempo_time, echo=FALSE}
-
-tempo_v_duration = ggplot(corrected_tempi, aes(
-  x=duration, y=tempo,
-)) + geom_point() + xlab("Track Duration (min)") + ylab("Corrected Tempo (bpm)") +
-  geom_text(
-    label=tempo_duration_labels,
-    nudge_x=.15, nudge_y=1.7
-  ) + ggtitle("Corrected Tempo vs Duration") +
-    xlim(1, 6.5) + ylim(50, 110)
-ggplotly(tempo_v_duration, height=700)
-
-```
-
-
-***
-
-Comparing raw track feature extractions from Spotify yielded the following histograms for duration and tempo.  
-
-Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But the distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess.
-
-A quick survey of the corpus shows that the harp and one other recording (less than 90 seconds duration) are clearly the fastest performances. Using this information, I presume that any tempo faster than the harp (bpm > 95) is actually the eighth-note tempo, if its duration is longer than 90 seconds. So I divide by two to "unwrap" the tempo:
-
-Re-evaluation shows a much more convincing distribution for tempo! 
-
-Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! Listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
-
-It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
 
 
 ### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
