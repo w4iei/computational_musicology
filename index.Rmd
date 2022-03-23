@@ -1,5 +1,5 @@
 ---
-title: "Bach's C-major prelude; computational study"
+title: "Bach's C-major prelude: a computational study"
 author: "Noah Jaffe"
 output: 
   flexdashboard::flex_dashboard:
@@ -81,7 +81,7 @@ hist2 = ggplot(combined_tempi, aes(
   theme(legend.title = element_blank()) + 
   scale_x_continuous(breaks= c(40, 60, 80, 100, 120, 140, 160)) + 
   scale_y_continuous(breaks=c(2,4,6,8,10,12,14,16))  + 
-  ggtitle("Distribution: Track Tempo")
+  ggtitle("Distribution: Track Tempo") 
 
 hist2
 ```
@@ -103,7 +103,7 @@ ggplotly(tempo_v_duration, height=700)
 
 ***
 
-Comparing raw track feature extractions from Spotify yielded the following histograms for duration and tempo.  
+Comparing raw track feature extractions from Spotify yielded the following histograms for duration and tempo. This data includes the entire corpus. 
 
 Given that most of the musicians are playing the exact same piece of music, there are several expectations. First, the track duration should vary inversely and linearly with tempo. There are a fixed number of notes, and when they are played through more quickly, then the track duration should be shorter. But the distributions (using the same number of bins) look different for Track Duration and Tempo. Duration appears gaussian, with three explainable outliers. Tempo however, is a bimodal mess.
 
@@ -114,8 +114,6 @@ Re-evaluation shows a much more convincing distribution for tempo!
 Now that the tempo for the tracks is more-or-less calculated correctly and looking proper, the recording labeled Axel Gillison is quite interesting! Listen yields a few interesting observations. Firstly, it is note-per-note a performance of the original piece, except for the fact that it is extraordinarily slow! Also, it's in a lower key!
 
 It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
-
-
 
 ### **Track-level summary**<br>Tempo and Instrument Analysis
 ``` {r track_summary, echo=FALSE}
@@ -596,21 +594,83 @@ distance2 = compmus_long_distance(
   theme_minimal() +
   scale_fill_viridis_c(guide = NULL)
 
-  grid.arrange(gg1, gg2, 
-               ncol = 2, nrow = 1, 
-               top=textGrob('Pitch Distance Matricies'))
+transpose_pitch = function(pitch_list, number_of_semitones) { # n = 1: C -> C#
+  names = names(pitch_list)
+  new_list = setNames(circshift(unname(pitch_list), number_of_semitones), names)
+  new_list
+}
+
+transpose_pitches = function(df, n) {  # n = 1 is C -> C#
+  df %>% dplyr::mutate(pitches = purrr::map2(pitches, n, transpose_pitch))  
+}
+
+luc = 
+  get_tidy_audio_analysis("13zyfbzt2PiYo2RjjJMCsb") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
+
+luc_t = transpose_pitches(luc, 1)
+
+gould_luc_dist = compmus_long_distance(
+  gould %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  luc %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  feature = pitches,
+  method = "euclidean"
+) 
+
+gould_luc_t_dist = compmus_long_distance(
+  gould %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  luc_t %>% mutate(pitches = map(pitches, compmus_normalise, "chebyshev")),
+  feature = pitches,
+  method = "euclidean"
+) 
+
+gg3 = ggplot(gould_luc_dist,
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_equal() +
+  labs(x = "Glenn Gould", y = "Luc Beausejour (original)") +
+  theme_minimal() +
+  scale_fill_viridis_c(guide = NULL)
   
+  gg4 = ggplot(gould_luc_t_dist,
+    aes(
+      x = xstart + xduration / 2,
+      width = xduration,
+      y = ystart + yduration / 2,
+      height = yduration,
+      fill = d
+    )
+  ) +
+  geom_tile() +
+  coord_equal() +
+  labs(x = "Glenn Gould", y = "Luc Beausejour (transposed)") +
+  theme_minimal() +
+  scale_fill_viridis_c(guide = NULL)
+  
+    grid.arrange(gg1, gg2, gg3, gg4,
+               ncol = 2, nrow = 2, 
+               top=textGrob('Pitch Distance Matricies'))
 ```
 
 ***
 
-Here are pitch distance similarity matricies. A dark spot indicates that the pitch content of the two pieces under comparison is very similar, while brighter color means that the spots are more contrasting. 
+Here are pitch distance matricies. A dark spot indicates that the pitch content of the two pieces under comparison is very similar, while brighter color means that the spots are more contrasting. 
 
 The left plot compares the harmonic content between Glenn Gould and Friedrich Gulda.  
 The right plot is a self-similarity matrix comparing Glenn Gould's performance to his own.
 
 Despite two different tempi for the performance, the two plots are nearly identical. Gulda has a long time after the final note and both performers keep a very steady tempo and do not deviate, as seen by a perfectly straight diagonal line from the origin. 
 
+I wished to compare Glenn Gould's performance against Luc Beausejour's harpsichord playing, which resulted in the bottom-left pitch distance vector. Not helpful, even though they're playing the same piece! By forcing a transposition of all pitches up by one semitone (eg: B becomes C), the bottom right dynamic time warping (DTW) matrix is produced. A sharp diagonal line is now observed, showing a 1:1 relationship between both recordings. 
 
 ###  **A tale of two harpsichords** tuning and chromagrams <br>
 ``` {r chroma, echo=FALSE}
@@ -761,23 +821,22 @@ Why does the SpotifyAPI think that Trevor Pinnock's recording has vocals?! A sco
 The acousticness metric is quite more vague in the Spotify API, but it seems to be more related to spectral content. Distortion of an electric guitar is caused my compression. This distrotion is what gives gives electric guitar its signature bright sound. It makes sense that harpsichord sounds more similar to electric guitar than the felt tips of a piano. 
 
 
-
 ### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
-This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1.     
+This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well-Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1. 
+
+The Well-Tempered Clavier is one of Bach's most famous keyboard works consisting of two books, each containing 24 matching preludes and fugues. [The first prelude (BWV 846)](https://en.wikipedia.org/wiki/Prelude_and_Fugue_in_C_major,_BWV_846) is in C-major and is the work studied here. Following the prelude, is a C-major fugue, followed by a C-minor prelude and fugue; the book contains one prelude and fugue for each key signature. 
 
 <iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/4yNYY3xmNhPTDrfFc0qG9b?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
 
 ***
 
-This playlist contains 28 tracks. 25 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
+This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
 
 The **exceptions** include:  
 1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
 2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
 3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
 
-This turned out to be a wonderful introduction to data science, R, the tidyverse, Spotify APIs, and data science in general. I'll walk you through my amusing findings.
-
-Downloading raw track feature extractions from Spotify yielded the following histograms for tempo and duration. 
+This turned out to be a wonderful introduction to data science, R, the tidyverse, the Spotify API, and data science in general. I'll walk you through my amusing findings.
 

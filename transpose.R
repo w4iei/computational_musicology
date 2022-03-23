@@ -10,12 +10,6 @@ circshift <- function(v, n) {
   if (n == 0) v else c(tail(v, n), head(v, -n))
 }
 
-luc = 
-  get_tidy_audio_analysis("13zyfbzt2PiYo2RjjJMCsb") %>%
-  select(segments) %>%
-  unnest(segments) %>%
-  select(start, duration, pitches)
-
 transpose_pitch = function(pitch_list, number_of_semitones) { # n = 1: C -> C#
   names = names(pitch_list)
   new_list = setNames(circshift(unname(pitch_list), number_of_semitones), names)
@@ -26,6 +20,11 @@ transpose_pitches = function(df, n) {  # n = 1 is C -> C#
   df %>% dplyr::mutate(pitches = purrr::map2(pitches, n, transpose_pitch))
 }
 
+luc = 
+  get_tidy_audio_analysis("13zyfbzt2PiYo2RjjJMCsb") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
 luc_t = transpose_pitches(luc, 1)
 
 luc_chroma = luc %>%
