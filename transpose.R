@@ -23,7 +23,7 @@ transpose_pitch = function(pitch_list, number_of_semitones) { # n = 1: C -> C#
 }
 
 transpose_pitches = function(df, n) {  # n = 1 is C -> C#
-  df %>% dplyr::mutate(pitches = purrr::map2(pitches, n, transpose_pitch))  # doesn't work correctly
+  df %>% dplyr::mutate(pitches = purrr::map2(pitches, n, transpose_pitch))
 }
 
 luc_t = transpose_pitches(luc, 1)
