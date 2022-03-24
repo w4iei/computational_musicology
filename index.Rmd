@@ -25,38 +25,147 @@ spotifyr::get_spotify_access_token()
 bach_prelude_playlist_features = get_playlist_audio_features("", "4yNYY3xmNhPTDrfFc0qG9b")
 bach_prelude_playlist_features = bach_prelude_playlist_features %>%
   mutate(track.duration_min = track.duration_ms/1000/60)
-
-# Label section
-tempo_duration_labels = c('', '', '', '', '', 
-                         'Harp', '', '', 'Axel Gillison', '',
-                         '', '', '', '', '',
-                          '', 'Jazz Band', '', 'Schiff w/ Fugue', '',
-                          '', '', '', '', '',
-                         '', '', '', '')
-
-bach_harpsichord_labels = c('', '', '', '', '', 
-                         '', '', '', '', 'Harpsichord - Pinnock',
-                         '', '', '', '', '',
-                          '', '', '', '', '',
-                          '', '', '', '', '',
-                         'Harpsichord - Beauséjour', 'Massage - Vocals', '', '')
-bach_harpsichord_factor = c('Piano', 'Piano', 'Piano', 'Piano', 'Piano', 
-                         'Harp', 'Piano', 'Piano', 'Piano', 'Harpsichord',
-                         'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
-                          'Piano', 'Piano + Jazz Band', 'Piano', 'Piano', 'Piano',
-                          'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
-                         'Harpsichord', 'Piano + Vocals', 'Piano', 'Piano')
-
 # Unwrap Tempo
 tempo_threshold = 95;
 time_threshold = 1.5;
 bach_prelude_playlist_features = bach_prelude_playlist_features %>% 
   mutate(corrected_tempo = case_when(tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5, TRUE ~ tempo))
 
+# Label section
+tempo_duration_labels = c('', '', '', '', '', 
+                         'Harp', '', '', 'Axel Gillison', '',
+                         '', '', '', '',
+                          '', 'Jazz Band', '', 'Schiff w/ Fugue', '',
+                          '', '', '', '', '',
+                         '', '', '', '')
+
+bach_harpsichord_labels = c('', '', '', '', '', 
+                         '', '', '', '', 'Harpsichord - Pinnock',
+                         '', '', '', '',
+                          '', '', '', '', '',
+                          '', '', '', '', '',
+                         'Harpsichord - Beauséjour', 'Massage - Vocals', '', '')
+bach_harpsichord_factor = c('Piano', 'Piano', 'Piano', 'Piano', 'Piano', 
+                         'Harp', 'Piano', 'Piano', 'Piano', 'Harpsichord',
+                         'Piano', 'Piano', 'Piano', 'Piano',
+                          'Piano', 'Piano + Jazz Band', 'Piano', 'Piano', 'Piano',
+                          'Piano', 'Piano', 'Piano', 'Piano', 'Piano',
+                         'Harpsichord', 'Piano + Vocals', 'Piano', 'Piano')
+
+
 get_track_artist = function(track_index) {     bach_prelude_playlist_features[['track.album.artists']][[track_index]][['name']][2]
 }
 
 ```
+
+### **Popularity**<br>What makes a performance popular?
+```{r popularity, echo=FALSE}
+library(dendextend)
+
+get_best_artist = function(artists){
+  if (length(artists[['name']]) > 1) {
+      artists[['name']][2] 
+  }
+    else {
+     artists[['name']][1]
+    }
+}
+
+get_yr = function(release_string){
+  str_split(release_string, '-')[[1]][1]
+}
+
+meta_df = transmute(bach_prelude_playlist_features,
+                    artist = map(track.artists, get_best_artist),
+                    release_year = as.numeric(map(track.album.release_date, get_yr)),
+                    corrected_tempo = corrected_tempo,
+                    track.track_number = track.track_number, 
+                    track.album.album_type = track.album.album_type)
+
+extracted_features <- bach_prelude_playlist_features %>% 
+  transmute(
+    track.popularity = as.numeric(track.popularity, stringsAsFactors = FALSE)
+         )
+scaled_features = scale(extracted_features)
+distances = dist(scaled_features)
+hc <- hclust(distances, method = 'complete')
+dend = as.dendrogram(hc)
+labels(dend) = meta_df[['artist']]
+cols <- c("#1b5e20", "#c8e6c9", "#81c784")
+dend <- color_branches(dend, k = 3, col = cols)
+plot(rev(dend), main="Popularity Distance") 
+
+```
+
+
+***
+
+The question that everyone wants to know is "what makes a song popular!?", and the question that data scientists want to answer is "can we predict which songs will become popular?!"  
+To this query, I suggest that there is no way to know which songs will become popular, but there are several ways to make sure your track will not become popular!
+
+By doing a simple clustering by popularity, I've labeled tracks into three categories: Unpopular, Somewhat Popular, and More Popular. **Light colors represent unpopular, while the darkest are most popular.**
+
+Doing other kinds of cluster analysis with all of the available track-level data yielded nothing of significance. These features included, tempo, liveness, instrumentalness, etc. It's probably obvious, but given that nearly every one of these recordings is of solo piano, it would be surprising if one of these metrics yielded a better performance.
+
+### **Popularity Contest**<br>Timing
+```{r tempo_release_year, echo=FALSE}
+
+final_df = extracted_features %>% mutate(cluster = factor(cutree(hc, k=3), labels=c('Somewhat Popular','Unpopular', 'More Popular')), 
+                                         artist = c(meta_df[['artist']]),
+                                         album_year = c(meta_df[['release_year']]),
+                                         tempo = c(meta_df[['corrected_tempo']]),
+                                         track.track_number = c(meta_df[['track.track_number']]),
+                                          album_type = c(meta_df[['track.album.album_type']]))
+                                         
+green_popularity_palette = c("Unpopular" = "#c8e6c9",
+                             "Somewhat Popular" = "#81c784",
+                             "More Popular" = "#1b5e20")
+
+year_plot = ggplot(data=final_df, aes(x=album_year, y=tempo, color=cluster)) + 
+  geom_point() + geom_text(label=final_df[['artist']], nudge_y=1) + 
+  scale_color_manual(values = green_popularity_palette) +
+  xlab('Year album released') + ylab('Tempo (bpm)')
+
+ggplotly(year_plot)
+```
+
+***
+
+In this cloud, the clusters from the previous tab are reused to show the relationships of tempo, album release year, and popularity. It seems that Gould and Schiff are popular despite being from the 70's and 80's, but most albums are newer and a bit faster. Surprising findings from this plot are that Lang Lang and Angela Hewitt are unpopular!
+
+
+### **How to be unpopular**<br>Try being on a compilation album
+```{r album_type, echo=FALSE}
+fig <- final_df %>%
+  plot_ly(
+    x = ~album_type,
+    y = ~track.popularity,
+    split = ~album_type,
+    type = 'violin',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    )
+  ) 
+fig <- fig %>%
+  layout(
+    xaxis = list(
+      title = "Album Type"
+    ),
+    yaxis = list(
+      title = "Popularity (higher is better)"
+    )
+  )
+fig
+
+```
+
+***
+
+This finding is surprising to me! In a world of "Bach for your baby", "classical piano study music" and the like, most classical musicians would sardonically expect that a random recording from a compilation would be more popular than Sir Andras Schiff or Glenn Gould. It turns out, that the opposite is true. Not a single one of the compilation recordings is popular. Perhaps this explains the Lang Lang  unpopularity! It is from a compilation album.
+
 
 ### **Tempo Overview**<br>Tempi picked by recording artists
 
