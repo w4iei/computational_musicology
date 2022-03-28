@@ -21,6 +21,9 @@ library(plotly)
 library(compmus)
 spotifyr::get_spotify_access_token()
 
+circshift <- function(v, n) {
+  if (n == 0) v else c(tail(v, n), head(v, -n))
+}
 
 bach_prelude_playlist_features = get_playlist_audio_features("", "4yNYY3xmNhPTDrfFc0qG9b")
 bach_prelude_playlist_features = bach_prelude_playlist_features %>%
@@ -58,114 +61,78 @@ get_track_artist = function(track_index) {     bach_prelude_playlist_features[['
 
 ```
 
-### **Popularity**<br>What makes a performance popular?
-```{r popularity, echo=FALSE}
-library(dendextend)
+### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
-get_best_artist = function(artists){
-  if (length(artists[['name']]) > 1) {
-      artists[['name']][2] 
-  }
-    else {
-     artists[['name']][1]
-    }
-}
+This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well-Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1. 
 
-get_yr = function(release_string){
-  str_split(release_string, '-')[[1]][1]
-}
+The Well-Tempered Clavier is one of Bach's most famous keyboard works consisting of two books, each containing 24 matching preludes and fugues. [The first prelude (BWV 846)](https://en.wikipedia.org/wiki/Prelude_and_Fugue_in_C_major,_BWV_846) is in C-major and is the work studied here. Following the prelude, is a C-major fugue, followed by a C-minor prelude and fugue; the book contains one prelude and fugue for each key signature. 
 
-meta_df = transmute(bach_prelude_playlist_features,
-                    artist = map(track.artists, get_best_artist),
-                    release_year = as.numeric(map(track.album.release_date, get_yr)),
-                    corrected_tempo = corrected_tempo,
-                    track.track_number = track.track_number, 
-                    track.album.album_type = track.album.album_type)
-
-extracted_features <- bach_prelude_playlist_features %>% 
-  transmute(
-    track.popularity = as.numeric(track.popularity, stringsAsFactors = FALSE)
-         )
-scaled_features = scale(extracted_features)
-distances = dist(scaled_features)
-hc <- hclust(distances, method = 'complete')
-dend = as.dendrogram(hc)
-labels(dend) = meta_df[['artist']]
-cols <- c("#1b5e20", "#c8e6c9", "#81c784")
-dend <- color_branches(dend, k = 3, col = cols)
-plot(rev(dend), main="Popularity Distance") 
-
-```
-
+<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/4yNYY3xmNhPTDrfFc0qG9b?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
 
 ***
 
-The question that everyone wants to know is "what makes a song popular!?", and the question that data scientists want to answer is "can we predict which songs will become popular?!"  
-To this query, I suggest that there is no way to know which songs will become popular, but there are several ways to make sure your track will not become popular!
+This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
 
-By doing a simple clustering by popularity, I've labeled tracks into three categories: Unpopular, Somewhat Popular, and More Popular. **Light colors represent unpopular, while the darkest are most popular.**
+The **exceptions** include:  
+1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
+2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
+3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
 
-Doing other kinds of cluster analysis with all of the available track-level data yielded nothing of significance. These features included, tempo, liveness, instrumentalness, etc. It's probably obvious, but given that nearly every one of these recordings is of solo piano, it would be surprising if one of these metrics yielded a better performance.
-
-### **Popularity Contest**<br>Timing
-```{r tempo_release_year, echo=FALSE}
-
-final_df = extracted_features %>% mutate(cluster = factor(cutree(hc, k=3), labels=c('Somewhat Popular','Unpopular', 'More Popular')), 
-                                         artist = c(meta_df[['artist']]),
-                                         album_year = c(meta_df[['release_year']]),
-                                         tempo = c(meta_df[['corrected_tempo']]),
-                                         track.track_number = c(meta_df[['track.track_number']]),
-                                          album_type = c(meta_df[['track.album.album_type']]))
-                                         
-green_popularity_palette = c("Unpopular" = "#c8e6c9",
-                             "Somewhat Popular" = "#81c784",
-                             "More Popular" = "#1b5e20")
-
-year_plot = ggplot(data=final_df, aes(x=album_year, y=tempo, color=cluster)) + 
-  geom_point() + geom_text(label=final_df[['artist']], nudge_y=1) + 
-  scale_color_manual(values = green_popularity_palette) +
-  xlab('Year album released') + ylab('Tempo (bpm)')
-
-ggplotly(year_plot)
-```
-
-***
-
-In this cloud, the clusters from the previous tab are reused to show the relationships of tempo, album release year, and popularity. It seems that Gould and Schiff are popular despite being from the 70's and 80's, but most albums are newer and a bit faster. Surprising findings from this plot are that Lang Lang and Angela Hewitt are unpopular!
+This turned out to be a wonderful introduction to data science, R, the tidyverse, the Spotify API, and data science in general. I'll walk you through my amusing findings.
 
 
-### **How to be unpopular**<br>Try being on a compilation album
-```{r album_type, echo=FALSE}
-fig <- final_df %>%
-  plot_ly(
-    x = ~album_type,
-    y = ~track.popularity,
-    split = ~album_type,
-    type = 'violin',
-    box = list(
-      visible = T
-    ),
-    meanline = list(
-      visible = T
+
+### **Track-level summary**<br>Tempo and Instrument Analysis
+``` {r track_summary, echo=FALSE}
+wtc = bach_prelude_playlist_features %>% 
+  mutate(instrument = bach_harpsichord_factor)
+  # Unwrap Tempo
+  tempo_threshold = 95;
+  time_threshold = 1.5;
+  wtc = wtc %>% 
+  mutate(tempo = corrected_tempo) %>%
+    slice(1:30) %>%
+    add_audio_analysis()
+
+  corpus_plot = wtc %>%
+  mutate(
+    sections =
+      map(
+        sections,                                    # sections or segments
+        summarise_at,
+        vars(tempo, loudness, duration),             # features of interest
+        list(section_mean = mean, section_sd = sd)   # aggregation functions
+      )
+  ) %>%
+  unnest(sections) %>%
+  ggplot(
+    aes(
+      x = tempo,
+      y = tempo_section_sd,
+      colour = instrument,
+      alpha = loudness
     )
-  ) 
-fig <- fig %>%
-  layout(
-    xaxis = list(
-      title = "Album Type"
-    ),
-    yaxis = list(
-      title = "Popularity (higher is better)"
-    )
+  ) +
+  geom_point(aes(size = duration / 60)) +
+  geom_rug() +
+  theme_minimal() +
+  ylim(0, 5) +
+  labs(
+    x = "Mean Tempo (bpm)",
+    y = "SD Tempo",
+    colour = "Instrument",
+    size = "Duration (min)",
+    alpha = "Volume (dBFS)"
   )
-fig
-
+corpus_plot
+# ggplotly(corpus_plot)  # won't work because of missing data :-(
 ```
 
 ***
 
-This finding is surprising to me! In a world of "Bach for your baby", "classical piano study music" and the like, most classical musicians would sardonically expect that a random recording from a compilation would be more popular than Sir Andras Schiff or Glenn Gould. It turns out, that the opposite is true. Not a single one of the compilation recordings is popular. Perhaps this explains the Lang Lang  unpopularity! It is from a compilation album.
+This plot shows a multi-dimensional analysis of many track-level features of this playlist. It's a wonderful way to get acquainted to the corpus. It shows that most of the works are approximately the same tempo, duration, loudness, and instrument.  
 
+The purple point is suspicious! This is the recording that has the "vocals" added on top. The vocals sound a bit fake; the standard deviation of the tempo is so low that it seems like the entire track might be synthesized! The jazz band has the largest tempo variation throughout the track.
 
 ### **Tempo Overview**<br>Tempi picked by recording artists
 
@@ -206,7 +173,7 @@ tempo_v_duration = ggplot(corrected_tempi, aes(
     nudge_x=.15, nudge_y=1.7
   ) + ggtitle("Corrected Tempo vs Duration") +
     xlim(1, 6.5) + ylim(50, 110)
-ggplotly(tempo_v_duration, height=700)
+ggplotly(tempo_v_duration, height=600)
 
 ```
 
@@ -224,63 +191,8 @@ Now that the tempo for the tracks is more-or-less calculated correctly and looki
 
 It appears that the creator of this Axel Gillison recording have done a few tricks! First of all, the Axel Gillison "wrapped" tempo is still twice the true tempo! The correct tempo is likely 32bpm. This would put our recording in line with our Tempo vs Duration curve. If we assume that this recording was produced using a sampling rate change (think of slowing down a record player) to change the tempo, we could correct the tempo back to C-major. The frequency ratio between C and A is 19:16—[a minor third](https://en.wikipedia.org/wiki/Minor_third). If we change the sampling rate by this ratio, we would end up with a tempo of 38bpm. This is still roughly half of our median tempo of 68bpm. So, it would appear that some other kind of fancy resampling has been done to yield such a slow tempo.
 
-### **Track-level summary**<br>Tempo and Instrument Analysis
-``` {r track_summary, echo=FALSE}
-wtc = bach_prelude_playlist_features %>% 
-  mutate(instrument = bach_harpsichord_factor)
-  # Unwrap Tempo
-  tempo_threshold = 95;
-  time_threshold = 1.5;
-  wtc = wtc %>% 
-  mutate(tempo = case_when(
-    tempo>tempo_threshold & track.duration_min > time_threshold ~ tempo * 0.5,
-    TRUE ~ tempo)) %>%
-    slice(1:30) %>%
-    add_audio_analysis()
-
-  wtc %>%
-  mutate(
-    sections =
-      map(
-        sections,                                    # sections or segments
-        summarise_at,
-        vars(tempo, loudness, duration),             # features of interest
-        list(section_mean = mean, section_sd = sd)   # aggregation functions
-      )
-  ) %>%
-  unnest(sections) %>%
-  ggplot(
-    aes(
-      x = tempo,
-      y = tempo_section_sd,
-      colour = instrument,
-      alpha = loudness
-    )
-  ) +
-  geom_point(aes(size = duration / 60)) +
-  geom_rug() +
-  theme_minimal() +
-  ylim(0, 5) +
-  labs(
-    x = "Mean Tempo (bpm)",
-    y = "SD Tempo",
-    colour = "Instrument",
-    size = "Duration (min)",
-    alpha = "Volume (dBFS)"
-  )
-```
-
-
-***
-
-This plot shows a multi-dimensional analysis of many track-level features of this playlist. The purple point is suspicious! This is the recording that has the "vocals" added on top. The vocals sound a bit fake; the standard deviation of the tempo is so low that it seems like the entire track might be synthesized! 
-
-The jazz band has the largest tempo variation throughout the track.
-
-
-
 ### **Tempo Consistency**<br>How steady is a performer?
-``` {r tempograms, out.width="100%", fig.height=2, echo=FALSE}
+``` {r tempograms, out.width="100%", fig.height=1.6, echo=FALSE}
 fake_bach = get_tidy_audio_analysis("1TJSjNBt6oIHV8QdgdgrBT")
 fake_bach_plot = fake_bach %>% tempogram(window_size = 8, hop_size = 1, cyclic = FALSE) %>%
   ggplot(aes(x = time, y = bpm, fill = power)) +
@@ -316,115 +228,6 @@ jazz_plot
 These three "tempograms" show the frequency of novel events events in three recordings from the corpus. These tempogram are clearly showing the sixteenth-note tempo. Since the C-major prelude consists of only sixteenth notes, this makes sense that we see a very clean tempogram for the first two. 
 First, the sounds for massage seems to confirm suspicions that this is computer generated. The tempo is completely consistent across the entire song. Glenn Gould, despite being one of the most consistent Bach performers of all time, has a noticeable tempo dip around 80 seconds.  
 Finally, the Jazz recording by Jacques Loussier is most interesting. In this recording, we see a clear and abrupt tempo shift around the two-minute mark when the jazz gets unleashed. Towards the end when the band returns to the original Bach music, we can see that the tempo is not the original one, even though it feels that way to us as lsiteners. Amusingly, this is a tempo-analogue to sonata form where the original theme returns, but in a different key, here, it returns, in a different tempo. 
-
-### **Key Areas**<br>Jazz vs Baroque Jazz
-``` {r keygram, out.width="100%", fig.height=4, echo=FALSE}
-
-
-circshift <- function(v, n) {
-  if (n == 0) v else c(tail(v, n), head(v, -n))
-}
-
-major_key <-
-  c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
-minor_key <-
-  c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
-
-key_templates <-
-  tribble(
-    ~name, ~template,
-    "Gb:maj", circshift(major_key, 6),
-    "Bb:min", circshift(minor_key, 10),
-    "Db:maj", circshift(major_key, 1),
-    "F:min", circshift(minor_key, 5),
-    "Ab:maj", circshift(major_key, 8),
-    "C:min", circshift(minor_key, 0),
-    "Eb:maj", circshift(major_key, 3),
-    "G:min", circshift(minor_key, 7),
-    "Bb:maj", circshift(major_key, 10),
-    "D:min", circshift(minor_key, 2),
-    "F:maj", circshift(major_key, 5),
-    "A:min", circshift(minor_key, 9),
-    "C:maj", circshift(major_key, 0),
-    "E:min", circshift(minor_key, 4),
-    "G:maj", circshift(major_key, 7),
-    "B:min", circshift(minor_key, 11),
-    "D:maj", circshift(major_key, 2),
-    "F#:min", circshift(minor_key, 6),
-    "A:maj", circshift(major_key, 9),
-    "C#:min", circshift(minor_key, 1),
-    "E:maj", circshift(major_key, 4),
-    "G#:min", circshift(minor_key, 8),
-    "B:maj", circshift(major_key, 11),
-    "D#:min", circshift(minor_key, 3)
-  )
-
-jacques <-
-  get_tidy_audio_analysis("2RQVtPukyUHJp1TFE1R66J") %>%
-  compmus_align(sections, segments) %>%
-  select(sections) %>%
-  unnest(sections) %>%
-  mutate(
-    pitches =
-      map(segments,
-          compmus_summarise, pitches,
-          method = "mean", norm = "manhattan"
-      )
-  )
-
-distance_data = jacques %>% 
-  compmus_match_pitch_template(
-    key_templates,         # Change to chord_templates if descired
-    method = "euclidean",  # Try different distance metrics
-    norm = "manhattan"     # Try different norms
-  ) %>% mutate(d = log(1/d, 10))  # Inverse log to make bright a good match
-
-  jacques_plot = ggplot(distance_data,
-    aes(x = start + duration / 2, width = duration, y = name, fill = d)
-  ) +
-  geom_tile() +
-  scale_fill_viridis_c(guide = "none") +
-  theme_minimal() +
-  labs(x = "Time (s)", y = "", title = "Jacques Loussier")
-  
-  gould <-
-    get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>%
-    compmus_align(sections, segments) %>%
-    select(sections) %>%
-    unnest(sections) %>%
-    mutate(
-      pitches =
-        map(segments,
-            compmus_summarise, pitches,
-            method = "mean", norm = "manhattan"
-        )
-    )
-  
-  distance_data1 = gould %>% 
-    compmus_match_pitch_template(
-      key_templates,         # Change to chord_templates if descired
-      method = "euclidean",  # Try different distance metrics
-      norm = "manhattan"     # Try different norms
-    ) %>% mutate(d = log(1/d, 10))  # Inverse log to make bright a good match
-  
-  gould_key = ggplot(distance_data1,
-              aes(x = start + duration / 2, width = duration, y = name, fill = d)
-  ) +
-    geom_tile() +
-    scale_fill_viridis_c(guide = "none") +
-    theme_minimal() +
-    labs(x = "Time (s)", y = "", title = "Glenn Gould")
-  jacques_plot
-  gould_key
-#  grid.arrange(jacques_plot, gould_key, ncol = 1, nrow = 2, 
-#               top=textGrob('Keygrams: Jazz vs Baroque'))
-```
-
-***
-
-Here, pitch-distance vectors are masked over sections of music to estimate key areas of pieces. Glenn Gould's recording (bottom) is representative of the original piece of music, while the top is Jacque Loussier's jazz rendition. Bright spots indicate a good match for the indicated key on the left.
-
-The two recordings share the same key signature (pun intended) for the first bit of the piece, where they clearly modulate from C major to d minor, and back. But then the jazz recording gets more exciting. It seems that Jacques Loussier has leaned into this C-D major modulation and uses it again in the Jazz section. Much of the jazz piece is only loosely tied to the C-major key area. 
 
 ###  **Harmonic novelty**<br>Pitch and Timbre Self-Similarity
 ``` {r self_similarity, echo=FALSE}
@@ -870,16 +673,15 @@ Each instrument/recording has a different tuning.
 ###  **A tale of two harpsichords** <br>  A look at Spotify's feature judgements of *acousticness* and *instrumentalness* for harpischord and piano
 
 ```{r download_features, include=FALSE}
-bach_prelude_playlist_features = bach_prelude_playlist_features %>%
-  mutate(Label = bach_harpsichord_labels)
-bach_prelude_playlist_features = bach_prelude_playlist_features %>%
-  mutate(instrument = factor(bach_harpsichord_factor))
+harpsichord_labeled_playlist = bach_prelude_playlist_features %>%
+  mutate(Label = bach_harpsichord_labels,
+         instrument = factor(bach_harpsichord_factor))
 ```
 
 ```{r acousticness, echo=FALSE}
 color_values = c("Piano"="black", "Harpsichord"="#D55E00",
                  "Piano + Vocals"="brown", "Piano + Jazz Band"="pink")
-acoustic_v_duration = ggplot(bach_prelude_playlist_features, aes(
+acoustic_v_duration = ggplot(harpsichord_labeled_playlist, aes(
   x=track.duration_min, y=acousticness, color=instrument
 )) + geom_point() + xlab("Track Duration (min)") + ylab("Acousticness") +
   geom_text(
@@ -889,7 +691,7 @@ acoustic_v_duration = ggplot(bach_prelude_playlist_features, aes(
 ```
 
 ```{r instrumentalness, echo=FALSE}
-instrumental_v_duration = ggplot(bach_prelude_playlist_features, aes(
+instrumental_v_duration = ggplot(harpsichord_labeled_playlist, aes(
   x=track.duration_min, y=instrumentalness, color=instrument
 )) + geom_point() + xlab("Track Duration (min)") + ylab("Instrumentalness") +
   geom_text(
@@ -899,8 +701,8 @@ instrumental_v_duration = ggplot(bach_prelude_playlist_features, aes(
 #ggplotly(instrumental_v_duration) Disable Legacy Plot
 ```
 
-```{r parallel_coords, echo=FALSE}
-para_coord_data = bach_prelude_playlist_features %>% 
+```{r parallel_coords, echo=FALSE, fig.height=2}
+para_coord_data = harpsichord_labeled_playlist %>% 
   select(instrument, instrumentalness, acousticness, Label)
 para_coord_plot = ggparcoord(para_coord_data, 
   columns=2:3, groupColumn=1, scale="globalminmax",
@@ -930,22 +732,296 @@ Why does the SpotifyAPI think that Trevor Pinnock's recording has vocals?! A sco
 The acousticness metric is quite more vague in the Spotify API, but it seems to be more related to spectral content. Distortion of an electric guitar is caused my compression. This distrotion is what gives gives electric guitar its signature bright sound. It makes sense that harpsichord sounds more similar to electric guitar than the felt tips of a piano. 
 
 
-### **About the corpus** <br>  A look at Bach's C-major Prelude (BWV 846)
 
-This playlist contains tracks of the same piece of music: The C-major prelude (BWV 846) from Bach's [Well-Tempered Clavier](https://en.wikipedia.org/wiki/The_Well-Tempered_Clavier), Book 1. 
+### **Key Areas**<br>Jazz vs Baroque Jazz
+``` {r keygram, out.width="100%", fig.height=3, echo=FALSE}
 
-The Well-Tempered Clavier is one of Bach's most famous keyboard works consisting of two books, each containing 24 matching preludes and fugues. [The first prelude (BWV 846)](https://en.wikipedia.org/wiki/Prelude_and_Fugue_in_C_major,_BWV_846) is in C-major and is the work studied here. Following the prelude, is a C-major fugue, followed by a C-minor prelude and fugue; the book contains one prelude and fugue for each key signature. 
+major_key <-
+  c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+minor_key <-
+  c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
 
-<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/4yNYY3xmNhPTDrfFc0qG9b?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+key_templates <-
+  tribble(
+    ~name, ~template,
+    "Gb:maj", circshift(major_key, 6),
+    "Bb:min", circshift(minor_key, 10),
+    "Db:maj", circshift(major_key, 1),
+    "F:min", circshift(minor_key, 5),
+    "Ab:maj", circshift(major_key, 8),
+    "C:min", circshift(minor_key, 0),
+    "Eb:maj", circshift(major_key, 3),
+    "G:min", circshift(minor_key, 7),
+    "Bb:maj", circshift(major_key, 10),
+    "D:min", circshift(minor_key, 2),
+    "F:maj", circshift(major_key, 5),
+    "A:min", circshift(minor_key, 9),
+    "C:maj", circshift(major_key, 0),
+    "E:min", circshift(minor_key, 4),
+    "G:maj", circshift(major_key, 7),
+    "B:min", circshift(minor_key, 11),
+    "D:maj", circshift(major_key, 2),
+    "F#:min", circshift(minor_key, 6),
+    "A:maj", circshift(major_key, 9),
+    "C#:min", circshift(minor_key, 1),
+    "E:maj", circshift(major_key, 4),
+    "G#:min", circshift(minor_key, 8),
+    "B:maj", circshift(major_key, 11),
+    "D#:min", circshift(minor_key, 3)
+  )
+
+jacques <-
+  get_tidy_audio_analysis("2RQVtPukyUHJp1TFE1R66J") %>%
+  compmus_align(sections, segments) %>%
+  select(sections) %>%
+  unnest(sections) %>%
+  mutate(
+    pitches =
+      map(segments,
+          compmus_summarise, pitches,
+          method = "mean", norm = "manhattan"
+      )
+  )
+
+distance_data = jacques %>% 
+  compmus_match_pitch_template(
+    key_templates,         # Change to chord_templates if descired
+    method = "euclidean",  # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>% mutate(d = log(1/d, 10))  # Inverse log to make bright a good match
+
+  jacques_plot = ggplot(distance_data,
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+  geom_tile() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "", title = "Jacques Loussier")
+  
+  gould <-
+    get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>%
+    compmus_align(sections, segments) %>%
+    select(sections) %>%
+    unnest(sections) %>%
+    mutate(
+      pitches =
+        map(segments,
+            compmus_summarise, pitches,
+            method = "mean", norm = "manhattan"
+        )
+    )
+  
+  distance_data1 = gould %>% 
+    compmus_match_pitch_template(
+      key_templates,         # Change to chord_templates if descired
+      method = "euclidean",  # Try different distance metrics
+      norm = "manhattan"     # Try different norms
+    ) %>% mutate(d = log(1/d, 10))  # Inverse log to make bright a good match
+  
+  gould_key = ggplot(distance_data1,
+              aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+    geom_tile() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_minimal() +
+    labs(x = "Time (s)", y = "", title = "Glenn Gould")
+  jacques_plot
+  gould_key
+#  grid.arrange(jacques_plot, gould_key, ncol = 1, nrow = 2, 
+#               top=textGrob('Keygrams: Jazz vs Baroque'))
+```
 
 ***
 
-This playlist contains 29 tracks. 26 of the tracks are of musicians playing exactly the same piece of sheet music (ie: they are trying to play exactly the same notes).  
+Here, pitch-distance vectors are masked over sections of music to estimate key areas of pieces. Glenn Gould's recording (bottom) is representative of the original piece of music, while the top is Jacque Loussier's jazz rendition. Bright spots indicate a good match for the indicated key on the left.
 
-The **exceptions** include:  
-1. The [Bach Eternal recording-labeled "Harp"](https://open.spotify.com/track/7sEU5ZN38FiKZ34zW1FPXt?si=37d325f811c14e95), in which the artist repeated the entire piece, but up an octave.  
-2. The [recording by Sir Andras Schiff](https://open.spotify.com/track/2XxC430QMotGdympDP1aBo?si=2f6d288cf1e14acb) which includes the fugue performed after the prelude  
-3. The [Jazz Arrangement by Jacques Loussier](https://open.spotify.com/track/2RQVtPukyUHJp1TFE1R66J?si=9824387780614219), which is labeled "Jazz Arrangement"  
+The two recordings share the same key signature (pun intended) for the first bit of the piece, where they clearly modulate from C major to d minor, and back. But then the jazz recording gets more exciting. It seems that Jacques Loussier has leaned into this C-D major modulation and uses it again in the Jazz section. Much of the jazz piece is only loosely tied to the C-major key area. 
 
-This turned out to be a wonderful introduction to data science, R, the tidyverse, the Spotify API, and data science in general. I'll walk you through my amusing findings.
 
+### **Popularity**<br>What makes a performance popular?
+```{r popularity, echo=FALSE}
+library(dendextend)
+
+get_best_artist = function(artists){
+  if (length(artists[['name']]) > 1) {
+      artists[['name']][2] 
+  }
+    else {
+     artists[['name']][1]
+    }
+}
+
+get_yr = function(release_string){
+  str_split(release_string, '-')[[1]][1]
+}
+
+meta_df = transmute(bach_prelude_playlist_features,
+                    artist = map(track.artists, get_best_artist),
+                    release_year = as.numeric(map(track.album.release_date, get_yr)),
+                    corrected_tempo = corrected_tempo,
+                    track.track_number = track.track_number, 
+                    track.album.album_type = track.album.album_type)
+
+extracted_features <- bach_prelude_playlist_features %>% 
+  transmute(
+    track.popularity = as.numeric(track.popularity, stringsAsFactors = FALSE)
+         )
+scaled_features = scale(extracted_features)
+distances = dist(scaled_features)
+hc <- hclust(distances, method = 'complete')
+dend = as.dendrogram(hc)
+labels(dend) = meta_df[['artist']]
+cols <- c("#1b5e20", "#c8e6c9", "#81c784")
+dend <- color_branches(dend, k = 3, col = cols)
+plot(rev(dend), main="Popularity Distance") 
+
+```
+
+
+***
+
+The question that everyone wants to know is "what makes a song popular!?", and the question that data scientists want to answer is "can we predict which songs will become popular?!"  
+To this query, I suggest that there is no way to know which songs will become popular, but there are several ways to make sure your track will not become popular!
+
+By doing a simple clustering by popularity, I've labeled tracks into three categories: Unpopular, Somewhat Popular, and More Popular. **Light colors represent unpopular, while the darkest are most popular.**
+
+Doing other kinds of cluster analysis with all of the available track-level data yielded nothing of significance. These features included, tempo, liveness, instrumentalness, etc. It's probably obvious, but given that nearly every one of these recordings is of solo piano, it would be surprising if one of these metrics yielded a better performance.
+
+### **Popularity Contest**<br>Timing
+```{r tempo_release_year, echo=FALSE}
+
+final_df = extracted_features %>% mutate(cluster = factor(cutree(hc, k=3), labels=c('Somewhat Popular','Unpopular', 'More Popular')), 
+                                         artist = c(meta_df[['artist']]),
+                                         album_year = c(meta_df[['release_year']]),
+                                         tempo = c(meta_df[['corrected_tempo']]),
+                                         track.track_number = c(meta_df[['track.track_number']]),
+                                          album_type = c(meta_df[['track.album.album_type']]))
+                                         
+green_popularity_palette = c("Unpopular" = "#c8e6c9",
+                             "Somewhat Popular" = "#81c784",
+                             "More Popular" = "#1b5e20")
+
+year_plot = ggplot(data=final_df, aes(x=album_year, y=tempo, color=cluster)) + 
+  geom_point() + geom_text(label=final_df[['artist']], nudge_y=1) + 
+  scale_color_manual(values = green_popularity_palette) +
+  xlab('Year album released') + ylab('Tempo (bpm)')
+
+ggplotly(year_plot)
+```
+
+***
+
+In this cloud, the clusters from the previous tab are reused to show the relationships of tempo, album release year, and popularity. It seems that Gould and Schiff are popular despite being from the 70's and 80's, but most albums are newer and a bit faster. Surprising findings from this plot are that Lang Lang and Angela Hewitt are unpopular!
+
+
+### **How to be unpopular**<br>Try being on a compilation album
+```{r album_type, echo=FALSE}
+fig <- final_df %>%
+  plot_ly(
+    x = ~album_type,
+    y = ~track.popularity,
+    split = ~album_type,
+    type = 'violin',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    )
+  ) 
+fig <- fig %>%
+  layout(
+    xaxis = list(
+      title = "Album Type"
+    ),
+    yaxis = list(
+      title = "Popularity (higher is better)"
+    )
+  )
+fig
+
+```
+
+***
+
+This finding is surprising to me! In a world of "Bach for your baby", "classical piano study music" and the like, most classical musicians would sardonically expect that a random recording from a compilation would be more popular than Sir Andras Schiff or Glenn Gould. It turns out, that the opposite is true. Not a single one of the compilation recordings is popular. Perhaps this explains the Lang Lang  unpopularity! It is from a compilation album.
+
+
+### **Popularity Contest**<br>Track Index
+``` {r popularity_plots, echo=FALSE}
+album_tracks = bach_prelude_playlist_features %>% 
+  filter(track.album.album_type == "album")
+
+get_best_artist = function(artists){
+  if (length(artists[['name']]) > 1) {
+    artists[['name']][[2]]
+  }
+  else {
+    artists[['name']][[1]]
+  }
+}
+
+
+# Adds all tracks from the associated album to the dataframe
+add_nested_tracks_from_album = function(playlist_df) {
+  get_adjacent_tracks = function(album_id){
+    track_query_brief = get_album_tracks(album_id, 48)  
+    # ^^ This doesn't return all the info we need, so use the IDs to query again
+    # Requery, using IDs:
+    album_df = paste(track_query_brief[['id']], collapse=",") %>% 
+      get_tracks() %>% select(id, disc_number, track_number, popularity)
+    album_df = album_df %>% mutate(track_audio_features = map(id, get_track_audio_features))
+    # Almost every album is 2 CDs with 24 tracks each, so create an index
+    # This doesn't work with Schiff.
+    album_df %>% mutate(track_index = (disc_number-1)*24 + track_number) 
+  }
+  
+  # This will take a while. Does an audio feature query per track. 
+  album_track_info = playlist_df %>% 
+    mutate(
+      album_tracks = map(track.album.id, get_adjacent_tracks),
+           album_artist_label = map(track.artists, get_best_artist))
+}
+
+bach_prelude_playlist_features = add_nested_tracks_from_album(bach_prelude_playlist_features) 
+
+unnested = bach_prelude_playlist_features %>%
+  select(album_tracks, album_artist_label) %>%
+  unnest(album_tracks) %>% 
+  mutate(popularity = as.numeric(popularity),
+         album_artist_label = as.character(album_artist_label)
+         )
+
+artists_to_compare = c( 'Glenn Gould', 'Lang Lang', 
+                        'András Schiff', 'Luc Beauséjour', 'Trevor Pinnock', 
+                       'Marisa Robles', 'Wilhelm Kempff', 'Julia Cload')
+unnested_f = unnested %>% filter(album_artist_label %in% artists_to_compare) %>%
+  mutate(artist_factor = as.factor(album_artist_label))
+
+popularity_trace = ggplot(unnested_f, aes(x=track_index, y=popularity)) + geom_line() + facet_wrap(~artist_factor) 
+ggplotly(popularity_trace) 
+
+```
+
+
+***
+
+In this analysis, the popularity of the track is compared to the tracks that follow it. In each of these cases, this is the first prelude, and is usually the first track on the album, with the highest popularity. There seem to be two signatures at play:  
+1. Schiff, Kempff, Cloud, and Beausejour have a C-major prelude that is much more popular than their respective album means.  
+2. Lang Lang, Pinnock, and Robles seem to be less in general, and do not see a large boost to their first track's popularity.  
+In general, as one would expect, the C-major prelude is the most popular track for almost every recording of the Well-Tempered Clavier.  
+
+*Note*: Here, track index is calculated as: (disc_number - 1) * 24 + track_number.
+
+### **Conclusions**<br>Food for thought
+In this investigation of Bach's Well-Tempered Clavier through the Spotify Api, there are the following findings:  
+1. Artists who are famous for playing classical music (eg: Sir Andras Schiff), are much more popular than other artists.  
+2. Compilations (eg: classical boost!) are much less popular than original albums of a single musical work.  
+3. Spotify chroma-based features (eg: key detection) work poorly for tunings where A is not 440hz. For tunings where A=415, features recover. It would be wonderful if Spotify's chroma detection algorithm applied tuning-detection to catch cases where pitches don't cleanly fall into an A=440hz.  
+4. Spotify's feature extractions for liveness, acousticness, and instrumentalness do not classify harpsichords correctly all of the time.  
+5. Timbre elements can be indicative of huge musical surprises! I am now in love with Jacques Loussier after having discovered his surprise jazz band.  
+6. Synthesized music can be detected by looking at the tempo features. A surprisingly low standard-deviation, or lack of curviness to the tempogram indicates that it's fake. This music is unpopular and generally uninteresting when compared to real performances of the same work.  
+7. Spotify's tempo calculations heavily bias towards 110-150bpm when there are repeated notes. This is unsurprising as tempo detection is very difficult.  
+8. For this piece of music, the most popular recordings are near the mean of tempo, or slower. Faster tempos are not as popular. This could be evidence supporting for the claim that successful classical music that is not as technically demanding (in a fast way) favors a slower tempo than normal.  
+   
+Points 1 and 2 could be evidence against the claim that "everyone only listens to classical music as background/study music". 
