@@ -19,9 +19,6 @@ bach_prelude_playlist_features = bach_prelude_playlist_features %>%
 
 album_tracks = bach_prelude_playlist_features %>% filter(track.album.album_type == "album")
 
-track.album.id
-album_tracks[["track.album.id"]][[1]]
-
 get_best_artist = function(artists){
   
   if (length(artists[['name']]) > 1) {
@@ -40,42 +37,53 @@ add_nested_tracks_from_album = function(playlist_df) {
     # Requery, using IDs:
     album_df = paste(track_query_brief[['id']], collapse=",") %>% 
       get_tracks() %>% select(id, disc_number, track_number, popularity)
-    album_df = album_df %>% mutate(track_audio_features = map(id, get_track_audio_features))
+    
+    afs = get_track_audio_features(paste(track_query_brief[['id']], collapse=','))
+    #album_df = album_df %>% mutate(track_audio_features = map(id, get_track_audio_features))
+    album_df = merge(album_df, afs, x.on="id", y.on="id")
     # Almost every album is 2 CDs with 24 tracks each, so create an index
     # This doesn't work with Schiff.
     album_df %>% mutate(track_index = (disc_number-1)*24 + track_number) 
   }
-  
-  # This will take a while. Does an audio feature query per track. 
-  album_track_info = playlist_df %>% 
-    mutate(
-      album_tracks = map(track.album.id, get_adjacent_tracks),
-           album_artist_label = map(track.artists, get_best_artist))
+  playlist_df %>% mutate(album_tracks = map(track.album.id, get_adjacent_tracks))
 }
 
+# Down select artists
+artists_to_compare = c( 'Glenn Gould', 'Keith Jarrett', 'Daniel Barenboim',
+                        'Luc Beauséjour', 'Trevor Pinnock', 
+                        'Wilhelm Kempff', 'Julia Cload')
 
+playlist_with_artists = bach_prelude_playlist_features %>% 
+  mutate(album_artist_label = as.character(map(track.artists, get_best_artist)))
 
-bach_prelude_playlist_features = add_nested_tracks_from_album(bach_prelude_playlist_features) 
-big_df_simple = bach_prelude_playlist_features %>% select(album_tracks, album_artist_label)
+filtered_playlist = playlist_with_artists %>% filter(album_artist_label %in% artists_to_compare )
 
-unnested = unnest(big_df_simple, album_tracks) %>% 
-  mutate(popularity = as.numeric(popularity),
-         album_artist_label = as.character(album_artist_label)
-         )
+filtered_nested = add_nested_tracks_from_album(filtered_playlist) 
+big_df_simple = filtered_nested %>% select(album_tracks, album_artist_label)
 
-artists_to_compare = c( 'Glenn Gould', 'Lang Lang', 
-                        'András Schiff', 'Luc Beauséjour', 'Trevor Pinnock', 
-                       'Marisa Robles', 'Wilhelm Kempff', 'Julia Cload')
-unnested_f = unnested %>% filter(album_artist_label %in% artists_to_compare ) %>%
-  mutate(artist_factor = as.factor(album_artist_label))
+unnested_f = unnest(big_df_simple, album_tracks) %>% 
+  mutate(popularity = as.numeric(popularity), 
+         artist_factor = as.factor(album_artist_label))
 
-print(unique(unnested_f$album_artist_label))
-
-stacked_pop = ggplot(unnested_f, aes(x=track_index, y=popularity, color=album_artist_label)) + geom_line()
-
-#(unnested, aes(x=track_index, y=popularity)) + geom_line() + facet_wrap(~album_artist_label)
+stacked_pop = ggplot(unnested_f, aes(x=track_index, y=popularity, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Popularity (0-100)') + labs(color="Artist")
+ggplotly(stacked_pop)
 
 popularity_trace = ggplot(unnested_f, aes(x=track_index, y=popularity)) + geom_line() + facet_wrap(~artist_factor) 
 ggplotly(popularity_trace) 
-ggplotly(stacked_pop)
-       
+
+loudness_trace = ggplot(unnested_f, aes(x=track_index, y=loudness)) + geom_line() + facet_wrap(~album_artist_label) 
+ggplotly(loudness_trace)
+
+
+stacked_loudness = ggplot(unnested_f, aes(x=track_index, y=loudness, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Loudness (dB)') + labs(color="Artist")
+ggplotly(stacked_loudness)
+
+stacked_energy = ggplot(unnested_f, aes(x=track_index, y=energy, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Energy') + labs(color="Artist")
+ggplotly(stacked_energy)
+
+stacked_key = ggplot(unnested_f, aes(x=track_index, y=key, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Key') + labs(color="Artist")
+ggplotly(stacked_key)

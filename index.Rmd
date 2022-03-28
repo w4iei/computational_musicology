@@ -80,6 +80,10 @@ The **exceptions** include:
 
 This turned out to be a wonderful introduction to data science, R, the tidyverse, the Spotify API, and data science in general. I'll walk you through my amusing findings.
 
+Musicological and research questions:  
+1. What are the noticeable differences between famous recordings and unpopular recordings? What about between each other?  
+2. Are there features in the music or in the performances that are more recognizable as MIR features than to human ears?  
+3. When looking at the top 30 recordings of Bach's Well-Tempered Clavier, where are these recordings from? Are some more popular than others?  What makes a popular recording popular?  
 
 
 ### **Track-level summary**<br>Tempo and Instrument Analysis
@@ -354,7 +358,7 @@ A bright line runs approximately halfway through the piece. This indicates that 
 
 And indeed, Spotify thinks that this moment is the most interesting and defining part of the piece. It's what is played when the track is selected in a preview.
 
-Meanwhile, the timbre self-similarity matrix seems to be most sensitive to notes below A3. This highlights a large difference when the bass line descends and becomes well pronounced pronounced.
+Meanwhile, the timbre self-similarity matrix seems to be most sensitive to notes below A3. This highlights a large difference when the bass line descends and becomes well pronounced pronounced. It's worth noting that while these pieces only contain solo piano, there are large timbre differences apparent, which mostly manifests itself in the range of the piano being played.  
 
 A look at the pitch self-similarity matricies don't reveal much information about musical form, other than there being a harmonically distant section in the middle. 
 
@@ -584,7 +588,7 @@ Despite two different tempi for the performance, the two plots are nearly identi
 
 I wished to compare Glenn Gould's performance against Luc Beausejour's harpsichord playing, which resulted in the bottom-left pitch distance vector. Not helpful, even though they're playing the same piece! By forcing a transposition of all pitches up by one semitone (eg: B becomes C), the bottom right dynamic time warping (DTW) matrix is produced. A sharp diagonal line is now observed, showing a 1:1 relationship between both recordings. 
 
-###  **A tale of two harpsichords** tuning and chromagrams <br>
+###  **A tale of two harpsichords**<br>Tuning and chromagrams 
 ``` {r chroma, echo=FALSE}
 gould = 
   get_tidy_audio_analysis("0eKd2VfI5EzrlgVH202x1i") %>%
@@ -669,6 +673,66 @@ Each instrument/recording has a different tuning.
 
 3. Luc Beausejour: Harpsichord. This 2007 recording uses a tuning that seems approximately one semi-tone flat (A ~ 415Hz). This is common for baroque recordings. Here, the Spotify chromagram looks quite simlar to Glenn Gould's, except that each row is shifted, indicating that Gould's C is Beausejour's B.
 
+
+###  **A tale of two harpsichords**<br>Timbre
+``` {r timbre, out.width="100%", fig.height=2, echo=FALSE}
+
+ 
+
+  # Pinnock 3pbZ0GbDAl8ehNiW58wOLO
+
+make_ceptrogram = function(track_id, plot_title) {
+  track_analysis = 
+    get_tidy_audio_analysis(track_id) %>% 
+    compmus_align(sections, segments) %>%                     # Change `bars`
+    select(sections) %>%                                      #   in all three
+    unnest(sections) %>%                                      #   of these lines.
+    mutate(
+      pitches =
+        map(segments,
+            compmus_summarise, pitches,
+            method = "rms", norm = "chebyshev"              # Change summary & norm.
+        )
+    ) %>%
+    mutate(
+      timbre =
+        map(segments,
+            compmus_summarise, timbre,
+            method = "rms", norm = "chebyshev"              # Change summary & norm.
+        )
+    )
+  
+  return_cept = track_analysis %>%
+    compmus_gather_timbre() %>%
+    ggplot(
+      aes(
+        x = start + duration / 2,
+        width = duration,
+        y = basis,
+        fill = value
+      )
+    ) +
+    geom_tile() +
+    labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = plot_title) +
+    scale_fill_viridis_c() +                              
+    theme_classic()
+  return_cept
+}
+
+gould_cept = make_ceptrogram("0eKd2VfI5EzrlgVH202x1i", "Glenn Gould - Piano")
+schiff_cept = make_ceptrogram("2XxC430QMotGdympDP1aBo", "Andras Schiff - Piano")
+pinnock_cept = make_ceptrogram("3pbZ0GbDAl8ehNiW58wOLO", "Trevor Pinnock - Harpsichord")
+luc_cept = make_ceptrogram("13zyfbzt2PiYo2RjjJMCsb", "Luc Beausejour - Harpsichord")
+gould_cept
+schiff_cept
+pinnock_cept
+luc_cept
+```
+
+
+***
+
+Here are four cepstrograms comparing timbre components comparing a piano and harpsichord recordings. The findings are quite surprising. Firstly, it seems Bach played on piano has a signature of being mostly component c02. The harpsichords look completely different, and are even significantly different from each other! The pianoforte is a dynamic instrument whose hammers compress when played at different loudnesses. This literal compression generates a different timbre and would be interesting to see how this compares to that of a
 
 ###  **A tale of two harpsichords** <br>  A look at Spotify's feature judgements of *acousticness* and *instrumentalness* for harpischord and piano
 
@@ -947,7 +1011,7 @@ fig
 This finding is surprising to me! In a world of "Bach for your baby", "classical piano study music" and the like, most classical musicians would sardonically expect that a random recording from a compilation would be more popular than Sir Andras Schiff or Glenn Gould. It turns out, that the opposite is true. Not a single one of the compilation recordings is popular. Perhaps this explains the Lang Lang  unpopularity! It is from a compilation album.
 
 
-### **Popularity Contest**<br>Track Index
+### **Popularity Contest**<br>C-Major Prelude vs the rest of the WTC Book 1
 ``` {r popularity_plots, echo=FALSE}
 album_tracks = bach_prelude_playlist_features %>% 
   filter(track.album.album_type == "album")
@@ -961,7 +1025,6 @@ get_best_artist = function(artists){
   }
 }
 
-
 # Adds all tracks from the associated album to the dataframe
 add_nested_tracks_from_album = function(playlist_df) {
   get_adjacent_tracks = function(album_id){
@@ -970,58 +1033,80 @@ add_nested_tracks_from_album = function(playlist_df) {
     # Requery, using IDs:
     album_df = paste(track_query_brief[['id']], collapse=",") %>% 
       get_tracks() %>% select(id, disc_number, track_number, popularity)
-    album_df = album_df %>% mutate(track_audio_features = map(id, get_track_audio_features))
+    
+    afs = get_track_audio_features(paste(track_query_brief[['id']], collapse=','))
+    #album_df = album_df %>% mutate(track_audio_features = map(id, get_track_audio_features))
+    album_df = merge(album_df, afs, x.on="id", y.on="id")
     # Almost every album is 2 CDs with 24 tracks each, so create an index
     # This doesn't work with Schiff.
     album_df %>% mutate(track_index = (disc_number-1)*24 + track_number) 
   }
-  
-  # This will take a while. Does an audio feature query per track. 
-  album_track_info = playlist_df %>% 
-    mutate(
-      album_tracks = map(track.album.id, get_adjacent_tracks),
-           album_artist_label = map(track.artists, get_best_artist))
+  playlist_df %>% mutate(album_tracks = map(track.album.id, get_adjacent_tracks))
 }
 
-bach_prelude_playlist_features = add_nested_tracks_from_album(bach_prelude_playlist_features) 
+# Down select artists
+artists_to_compare = c( 'Glenn Gould', 'Keith Jarrett', 'Daniel Barenboim',
+                        'Luc Beauséjour', 'Trevor Pinnock', 
+                        'Wilhelm Kempff', 'Julia Cload')
 
-unnested = bach_prelude_playlist_features %>%
-  select(album_tracks, album_artist_label) %>%
-  unnest(album_tracks) %>% 
-  mutate(popularity = as.numeric(popularity),
-         album_artist_label = as.character(album_artist_label)
-         )
 
-artists_to_compare = c( 'Glenn Gould', 'Lang Lang', 
-                        'András Schiff', 'Luc Beauséjour', 'Trevor Pinnock', 
-                       'Marisa Robles', 'Wilhelm Kempff', 'Julia Cload')
-unnested_f = unnested %>% filter(album_artist_label %in% artists_to_compare) %>%
-  mutate(artist_factor = as.factor(album_artist_label))
+playlist_with_artists = bach_prelude_playlist_features %>% 
+  mutate(album_artist_label = as.character(map(track.artists, get_best_artist)))
 
-popularity_trace = ggplot(unnested_f, aes(x=track_index, y=popularity)) + geom_line() + facet_wrap(~artist_factor) 
-ggplotly(popularity_trace) 
+filtered_playlist = playlist_with_artists %>% filter(album_artist_label %in% artists_to_compare )
+
+filtered_nested = add_nested_tracks_from_album(filtered_playlist) 
+big_df_simple = filtered_nested %>% select(album_tracks, album_artist_label)
+
+unnested_f = unnest(big_df_simple, album_tracks) %>% 
+  mutate(popularity = as.numeric(popularity), 
+         artist_factor = as.factor(album_artist_label))
+
+stacked_pop = ggplot(unnested_f, aes(x=track_index, y=popularity, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Popularity (0-100)') + labs(color="Artist")
+ggplotly(stacked_pop)
+
 
 ```
 
 
 ***
 
-In this analysis, the popularity of the track is compared to the tracks that follow it. In each of these cases, this is the first prelude, and is usually the first track on the album, with the highest popularity. There seem to be two signatures at play:  
-1. Schiff, Kempff, Cloud, and Beausejour have a C-major prelude that is much more popular than their respective album means.  
-2. Lang Lang, Pinnock, and Robles seem to be less in general, and do not see a large boost to their first track's popularity.  
+In this analysis, the popularity of the track is compared to the tracks that follow it. In each of these cases, this is the first prelude, and is usually the first track on the album, with the highest popularity. Most artists have a C-major prelude that is much more popular than their respective album means. 
 In general, as one would expect, the C-major prelude is the most popular track for almost every recording of the Well-Tempered Clavier.  
 
-*Note*: Here, track index is calculated as: (disc_number - 1) * 24 + track_number.
+*Note*: Here, track index is calculated as: (disc_number - 1) * 24 + track_number. 
+
+### **Loudness/Dynamics**<br>C-Major Prelude vs the rest of the WTC Book 1
+``` {r loudness_plot, echo=FALSE}
+stacked_loudness = ggplot(unnested_f, aes(x=track_index, y=loudness, color=album_artist_label)) +
+  geom_line() + xlab('Track Index') + ylab('Loudness (dB)') + labs(color="Artist")
+ggplotly(stacked_loudness)
+
+```
+
+
+***
+
+Here, there are the laoudness for 9 of the given artists, stacked on top of each other. Toggle them off and on to investigate them against each other, or alone. 
+
+Interesting findings:  
+1. Glenn Gould seems to really like his major fugues! He plays them loud! Then the following minor prelude seems to always be quiet, creating this sawtooth loudness signature throughout his albums.
+2. Trevor Pinnock seems to have just as big of a dynamic range as many pianists, despite being on harpsichord. This proves a key musicological point that the harpsichord can play louder and softer, just not in the same way as a pianoforte! Also, his major figue peaks line up with Glenn Gould's.  
+3.  Julia Cload has the largest loudness dynamic range!  
+4.  By looking at aligned peaks, some clear trends are visible that many artists interpret specific preludes or fugues similarly. Interestingly, the C-major prelude (track one!) seems to be very contested. Many artists start loud, playing other tracks softer, and vice versa. This data appears highly correlated, but not quite, with 'energy'.
 
 ### **Conclusions**<br>Food for thought
 In this investigation of Bach's Well-Tempered Clavier through the Spotify Api, there are the following findings:  
-1. Artists who are famous for playing classical music (eg: Sir Andras Schiff), are much more popular than other artists.  
-2. Compilations (eg: classical boost!) are much less popular than original albums of a single musical work.  
+1. In Spotify's world, a unique recording is not a unique recording. At first, I had several recording artist's recordings from compilation albums. This threw off popularity metrics, as these tracks are tallied separately from their original sources. As a result, these compilation albums have been removed, and have been replaced by their original album sources.  
+2. Compilations (eg: classical boost!) are far less popular than original albums of a single musical work. This was a big shock. When searching for a specific track on Spotify, (eg: "Bwv 846"), Spotify will return a mishmash of recordings that are from compilation albums and from original artist albums. Many of these tracks will be the same exact audio recording.
 3. Spotify chroma-based features (eg: key detection) work poorly for tunings where A is not 440hz. For tunings where A=415, features recover. It would be wonderful if Spotify's chroma detection algorithm applied tuning-detection to catch cases where pitches don't cleanly fall into an A=440hz.  
 4. Spotify's feature extractions for liveness, acousticness, and instrumentalness do not classify harpsichords correctly all of the time.  
 5. Timbre elements can be indicative of huge musical surprises! I am now in love with Jacques Loussier after having discovered his surprise jazz band.  
 6. Synthesized music can be detected by looking at the tempo features. A surprisingly low standard-deviation, or lack of curviness to the tempogram indicates that it's fake. This music is unpopular and generally uninteresting when compared to real performances of the same work.  
 7. Spotify's tempo calculations heavily bias towards 110-150bpm when there are repeated notes. This is unsurprising as tempo detection is very difficult.  
 8. For this piece of music, the most popular recordings are near the mean of tempo, or slower. Faster tempos are not as popular. This could be evidence supporting for the claim that successful classical music that is not as technically demanding (in a fast way) favors a slower tempo than normal.  
+9. Simple "loudness" measured in dB can be a surprisingly effective metric for considering interpretation decisions on a large scale of an album. Music nerds love to comb over Glenn Gould's recordings for hypermeter information and some of it is revealed here. This could be immensely helpful for guiding a performer's interpretation of this work.
+10. This analysis has reopened a fondness in my heart for the harpsichord. While the instrument lacks the expressive capabilities of a pianoforte in a 19th and 20th century context, this work was written with it in mind. 
    
 Points 1 and 2 could be evidence against the claim that "everyone only listens to classical music as background/study music". 
